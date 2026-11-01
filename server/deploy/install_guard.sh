@@ -20,27 +20,66 @@ ensure_service_identity() {   # <account> <nologin path>
         _install_guard_fail "passwd is required to verify that password authentication is locked"
         return 1
     }
-    getent group > /dev/null 2>&1 || {
+    _guard_all_groups=$(getent group 2>/dev/null) || {
         _install_guard_fail "cannot enumerate groups through getent"
         return 1
     }
-    getent passwd > /dev/null 2>&1 || {
+    _guard_passwd_all=$(getent passwd 2>/dev/null) || {
         _install_guard_fail "cannot enumerate users through getent"
         return 1
     }
+    if ! printf '%s\n' "$_guard_all_groups" | awk -F: \
+        'NF != 4 || $1 == "" || $3 !~ /^[0-9]+$/ { bad = 1 } END { exit !(NR > 0 && !bad) }' ||
+       ! printf '%s\n' "$_guard_passwd_all" | awk -F: \
+        'NF != 7 || $1 == "" || $3 !~ /^[0-9]+$/ || $4 !~ /^[0-9]+$/ { bad = 1 } END { exit !(NR > 0 && !bad) }'; then
+        _install_guard_fail "user or group enumeration is incomplete or malformed"
+        return 1
+    fi
 
-    _guard_group_line=$(getent group "$_guard_account" 2>/dev/null) || _guard_group_line=
-    if [ -z "$_guard_group_line" ]; then
+    # A status of 2 means a missing key for getent; any other failure or output
+    # accompanying a missing-key status is unverifiable and must not create an identity.
+    _guard_group_status=0
+    _guard_group_line=$(getent group "$_guard_account" 2>/dev/null) || _guard_group_status=$?
+    _guard_user_status=0
+    _guard_user_line=$(getent passwd "$_guard_account" 2>/dev/null) || _guard_user_status=$?
+    case "$_guard_group_status" in
+        0) printf '%s\n' "$_guard_group_line" | awk -F: -v account="$_guard_account" \
+             'NR == 1 && NF == 4 && $1 == account { ok = 1 } END { exit !(NR == 1 && ok) }' || {
+                 _install_guard_fail "the $_guard_account group lookup is ambiguous or malformed"; return 1; } ;;
+        2) [ -z "$_guard_group_line" ] && printf '%s\n' "$_guard_all_groups" | awk -F: -v account="$_guard_account" \
+             '$1 == account { found = 1 } END { exit found }' || {
+                 _install_guard_fail "the $_guard_account group lookup disagrees with enumeration"; return 1; } ;;
+        *) _install_guard_fail "cannot look up the $_guard_account group"; return 1 ;;
+    esac
+    case "$_guard_user_status" in
+        0) printf '%s\n' "$_guard_user_line" | awk -F: -v account="$_guard_account" \
+             'NR == 1 && NF == 7 && $1 == account { ok = 1 } END { exit !(NR == 1 && ok) }' || {
+                 _install_guard_fail "the $_guard_account user lookup is ambiguous or malformed"; return 1; }
+           printf '%s\n' "$_guard_passwd_all" | awk -F: -v account="$_guard_account" -v expected="$_guard_user_line" \
+             '$1 == account { named++; if ($0 == expected) matched++ } END { exit !(named == 1 && matched == 1) }' || {
+                 _install_guard_fail "the $_guard_account user lookup disagrees with enumeration"; return 1; } ;;
+        2) [ -z "$_guard_user_line" ] && printf '%s\n' "$_guard_passwd_all" | awk -F: -v account="$_guard_account" \
+             '$1 == account { found = 1 } END { exit found }' || {
+                 _install_guard_fail "the $_guard_account user lookup disagrees with enumeration"; return 1; } ;;
+        *) _install_guard_fail "cannot look up the $_guard_account user"; return 1 ;;
+    esac
+    if [ "$_guard_group_status" -eq 2 ] && [ "$_guard_user_status" -eq 0 ]; then
+        _install_guard_fail "the $_guard_account user already exists without its dedicated group"
+        return 1
+    fi
+    if [ "$_guard_group_status" -eq 2 ]; then
         groupadd --system "$_guard_account" || {
             _install_guard_fail "could not create the $_guard_account group"
             return 1
         }
-        _guard_group_line=$(getent group "$_guard_account" 2>/dev/null) || _guard_group_line=
+        _guard_group_line=$(getent group "$_guard_account" 2>/dev/null) || {
+            _install_guard_fail "cannot read the newly created $_guard_account group"; return 1; }
+        _guard_all_groups=$(getent group 2>/dev/null) || {
+            _install_guard_fail "cannot enumerate groups after creating $_guard_account"; return 1; }
     fi
-    case "$_guard_group_line" in
-        "$_guard_account":*:*:*) ;;
-        *) _install_guard_fail "the $_guard_account group entry is missing or malformed"; return 1 ;;
-    esac
+    printf '%s\n' "$_guard_group_line" | awk -F: -v account="$_guard_account" \
+        'NR == 1 && NF == 4 && $1 == account { ok = 1 } END { exit !(NR == 1 && ok) }' || {
+            _install_guard_fail "the $_guard_account group entry is missing or malformed"; return 1; }
     _guard_group_rest=${_guard_group_line#*:}
     _guard_group_rest=${_guard_group_rest#*:}
     _guard_group_gid=${_guard_group_rest%%:*}
@@ -56,28 +95,31 @@ ensure_service_identity() {   # <account> <nologin path>
         _install_guard_fail "the $_guard_account group already has supplementary members"
         return 1
     }
-    _guard_all_groups=$(getent group 2>/dev/null) || {
-        _install_guard_fail "cannot verify that the $_guard_account GID has no group aliases"
-        return 1
-    }
-    if ! printf '%s\n' "$_guard_all_groups" | awk -F: -v account="$_guard_account" -v gid="$_guard_group_gid" \
-        '$1 == account { named++; if ($3 == gid) matched = 1 } $3 == gid && $1 != account { other = 1 } END { exit !(named == 1 && matched && !other) }'; then
+    if ! printf '%s\n' "$_guard_all_groups" | awk -F: -v account="$_guard_account" -v gid="$_guard_group_gid" -v expected="$_guard_group_line" \
+        'NF != 4 || $1 == "" || $3 !~ /^[0-9]+$/ { bad = 1 } $1 == account { named++; if ($0 == expected) matched++ } $3 == gid && $1 != account { other = 1 } END { exit !(NR > 0 && !bad && named == 1 && matched == 1 && !other) }'; then
         _install_guard_fail "the $_guard_account group name or GID is duplicated or missing from group enumeration"
         return 1
     fi
 
-    _guard_user_line=$(getent passwd "$_guard_account" 2>/dev/null) || _guard_user_line=
-    if [ -z "$_guard_user_line" ]; then
+    if [ "$_guard_user_status" -eq 2 ]; then
+        # Refuse a pre-existing shared primary group before adding the service user.
+        if ! printf '%s\n' "$_guard_passwd_all" | awk -F: -v gid="$_guard_group_gid" \
+            '$4 == gid { used = 1 } END { exit used }'; then
+            _install_guard_fail "the $_guard_account group is already another user's primary group"
+            return 1
+        fi
         useradd --system --gid "$_guard_account" --home-dir /nonexistent --no-create-home --shell "$_guard_nologin" "$_guard_account" || {
             _install_guard_fail "could not create the $_guard_account user"
             return 1
         }
-        _guard_user_line=$(getent passwd "$_guard_account" 2>/dev/null) || _guard_user_line=
+        _guard_user_line=$(getent passwd "$_guard_account" 2>/dev/null) || {
+            _install_guard_fail "cannot read the newly created $_guard_account user"; return 1; }
+        _guard_passwd_all=$(getent passwd 2>/dev/null) || {
+            _install_guard_fail "cannot enumerate users after creating $_guard_account"; return 1; }
     fi
-    case "$_guard_user_line" in
-        "$_guard_account":*:*:*:*:*:*) ;;
-        *) _install_guard_fail "the $_guard_account user entry is missing or malformed"; return 1 ;;
-    esac
+    printf '%s\n' "$_guard_user_line" | awk -F: -v account="$_guard_account" \
+        'NR == 1 && NF == 7 && $1 == account { ok = 1 } END { exit !(NR == 1 && ok) }' || {
+            _install_guard_fail "the $_guard_account user entry is missing or malformed"; return 1; }
     _guard_user_rest=${_guard_user_line#*:}
     _guard_user_rest=${_guard_user_rest#*:}
     _guard_uid=${_guard_user_rest%%:*}
@@ -140,12 +182,8 @@ ensure_service_identity() {   # <account> <nologin path>
         return 1
     fi
 
-    _guard_passwd_all=$(getent passwd 2>/dev/null) || {
-        _install_guard_fail "cannot verify the unique $_guard_account passwd record"
-        return 1
-    }
-    if ! printf '%s\n' "$_guard_passwd_all" | awk -F: -v account="$_guard_account" -v uid="$_guard_uid" -v gid="$_guard_group_gid" \
-        '$1 == account { named++; if ($3 == uid && $4 == gid) matched = 1 } $3 == uid && $1 != account { other_uid = 1 } $4 == gid && $1 != account { other_gid = 1 } END { exit !(named == 1 && matched && !other_uid && !other_gid) }'; then
+    if ! printf '%s\n' "$_guard_passwd_all" | awk -F: -v account="$_guard_account" -v uid="$_guard_uid" -v gid="$_guard_group_gid" -v expected="$_guard_user_line" \
+        'NF != 7 || $1 == "" || $3 !~ /^[0-9]+$/ || $4 !~ /^[0-9]+$/ { bad = 1 } $1 == account { named++; if ($0 == expected && $3 == uid && $4 == gid) matched++ } $3 == uid && $1 != account { other_uid = 1 } $4 == gid && $1 != account { other_gid = 1 } END { exit !(NR > 0 && !bad && named == 1 && matched == 1 && !other_uid && !other_gid) }'; then
         _install_guard_fail "the $_guard_account passwd record is duplicated, missing, inconsistent, or shared with another user"
         return 1
     fi

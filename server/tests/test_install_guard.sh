@@ -4,11 +4,22 @@
 set -eu
 
 guard=${1:-}
-if [ -z "$guard" ] || [ ! -f "$guard" ]; then
-    echo "usage: sh test_install_guard.sh <install_guard.sh>" >&2
+installer=${2:-}
+if [ -z "$guard" ] || [ ! -f "$guard" ] || [ -z "$installer" ] || [ ! -f "$installer" ]; then
+    echo "usage: sh test_install_guard.sh <install_guard.sh> <install.sh>" >&2
     exit 2
 fi
 . "$guard"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' 0 HUP INT TERM
+# Source only the marked function definition; the installer itself is never run.
+awk '
+    $0 == "# BEGIN PRIVATE_GROUP_CHECK" { if (started++ || inside || ended) exit 1; inside = 1; next }
+    $0 == "# END PRIVATE_GROUP_CHECK" { if (!inside || ended++) exit 1; inside = 0; next }
+    inside { print }
+    END { if (started != 1 || ended != 1 || inside) exit 1 }
+' "$installer" > "$work/private_group.sh" || { echo "cannot extract private group check" >&2; exit 2; }
+. "$work/private_group.sh"
 
 failures=0
 ok() { echo "ok: $*"; }
@@ -23,8 +34,14 @@ mock_id_gid=""
 mock_groups=""
 mock_passwd_status=""
 mock_passwd_exit=0
+mock_group_lookup_exit=0
+mock_user_lookup_exit=0
+mock_group_enum_exit=0
+mock_user_enum_exit=0
 groupadd_calls=0
 useradd_calls=0
+usermod_calls=0
+adduser_calls=0
 chown_calls=0
 chmod_calls=0
 
@@ -32,21 +49,29 @@ getent() {
     case "$1" in
         group)
             if [ "$#" -eq 2 ]; then
+                if [ "$mock_group_lookup_exit" -ne 0 ]; then
+                    [ -z "$mock_group" ] || printf '%s\n' "$mock_group"
+                    return "$mock_group_lookup_exit"
+                fi
                 [ -n "$mock_group" ] || return 2
                 printf '%s\n' "$mock_group"
                 return 0
             fi
             printf '%s\n' "$mock_groups_all"
-            return 0
+            return "$mock_group_enum_exit"
             ;;
         passwd)
             if [ "$#" -eq 2 ]; then
+                if [ "$mock_user_lookup_exit" -ne 0 ]; then
+                    [ -z "$mock_user" ] || printf '%s\n' "$mock_user"
+                    return "$mock_user_lookup_exit"
+                fi
                 [ -n "$mock_user" ] || return 2
                 printf '%s\n' "$mock_user"
                 return 0
             fi
             printf '%s\n' "$mock_passwd_all"
-            return 0
+            return "$mock_user_enum_exit"
             ;;
     esac
     return 2
@@ -56,18 +81,22 @@ groupadd() {
     groupadd_calls=$((groupadd_calls + 1))
     [ "$1" = --system ] && [ "$2" = sco-relay ] || return 2
     mock_group=sco-relay:x:64001:
-    mock_groups_all=$mock_group
+    mock_groups_all="$mock_groups_all
+$mock_group"
 }
 
 useradd() {
     useradd_calls=$((useradd_calls + 1))
     mock_user='sco-relay:!:64001:64001::/nonexistent:/usr/sbin/nologin'
-    mock_passwd_all=$mock_user
+    mock_passwd_all="$mock_passwd_all
+$mock_user"
     mock_id_uid=64001
     mock_id_gid=64001
     mock_groups=64001
     mock_passwd_status='sco-relay L 2026-11-01 0 99999 7 -1'
 }
+usermod() { usermod_calls=$((usermod_calls + 1)); return 1; }
+adduser() { adduser_calls=$((adduser_calls + 1)); return 1; }
 
 id() {
     [ "$2" = sco-relay ] || return 2
@@ -97,16 +126,24 @@ chmod() {
 
 set_safe_identity() {
     mock_group='sco-relay:x:64001:'
-    mock_groups_all=$mock_group
+    mock_groups_all="root:x:0:
+$mock_group"
     mock_user='sco-relay:!:64001:64001::/nonexistent:/usr/sbin/nologin'
-    mock_passwd_all=$mock_user
+    mock_passwd_all="root:x:0:0:root:/root:/bin/sh
+$mock_user"
     mock_id_uid=64001
     mock_id_gid=64001
     mock_groups=64001
     mock_passwd_status='sco-relay L 2026-11-01 0 99999 7 -1'
     mock_passwd_exit=0
+    mock_group_lookup_exit=0
+    mock_user_lookup_exit=0
+    mock_group_enum_exit=0
+    mock_user_enum_exit=0
     groupadd_calls=0
     useradd_calls=0
+    usermod_calls=0
+    adduser_calls=0
 }
 
 expect_identity_rejected() {
@@ -117,6 +154,141 @@ expect_identity_rejected() {
         ok "$label was refused"
     fi
 }
+expect_identity_rejected_without_creation() {
+    label=$1
+    if ensure_service_identity sco-relay /usr/sbin/nologin 2>/dev/null; then
+        fail "$label was accepted"
+    elif [ "$groupadd_calls" -eq 0 ] && [ "$useradd_calls" -eq 0 ] &&
+         [ "$usermod_calls" -eq 0 ] && [ "$adduser_calls" -eq 0 ]; then
+        ok "$label was refused before account/group mutation"
+    else
+        fail "$label invoked an account/group mutation"
+    fi
+}
+
+set_private_identity() {
+    set_safe_identity
+    mock_user='owner:x:1001:1001:Owner:/home/owner:/bin/sh'
+    mock_passwd_all="root:x:0:0:root:/root:/bin/sh
+$mock_user"
+    mock_group='owner:x:1001:'
+    mock_groups_all="root:x:0:
+$mock_group"
+}
+expect_private_rejected() {
+    label=$1
+    if private_group 1001 1001; then
+        fail "$label was accepted as a private group"
+    else
+        ok "$label was refused as a private group"
+    fi
+}
+
+set_private_identity
+if private_group 1001 1001; then
+    ok "matching, fully enumerated owner and private group are accepted"
+else
+    fail "matching, fully enumerated owner and private group were refused"
+fi
+set_private_identity
+mock_user_lookup_exit=3
+mock_group_lookup_exit=3
+if private_group 1001 0; then
+    ok "the explicitly allowed root group does not require NSS lookups"
+else
+    fail "the explicitly allowed root group was refused"
+fi
+set_private_identity
+mock_user_lookup_exit=3
+expect_private_rejected "failed owner lookup with partial output"
+set_private_identity
+mock_group_lookup_exit=3
+expect_private_rejected "failed group lookup with partial output"
+set_private_identity
+mock_user_enum_exit=3
+expect_private_rejected "failed user enumeration with partial output"
+set_private_identity
+mock_group_enum_exit=3
+expect_private_rejected "failed group enumeration with partial output"
+set_private_identity
+mock_user='owner:x:1001'
+expect_private_rejected "incomplete targeted owner record"
+set_private_identity
+mock_group='owner:x:1001'
+expect_private_rejected "incomplete targeted group record"
+set_private_identity
+mock_passwd_all='root:x:0:0:root:/root:/bin/sh'
+expect_private_rejected "owner missing from successful enumeration"
+set_private_identity
+mock_groups_all='root:x:0:'
+expect_private_rejected "group missing from successful enumeration"
+set_private_identity
+mock_passwd_all="$mock_passwd_all
+partial:x:1002"
+expect_private_rejected "incomplete record in user enumeration"
+set_private_identity
+mock_groups_all="$mock_groups_all
+partial:x"
+expect_private_rejected "incomplete record in group enumeration"
+set_private_identity
+mock_groups_all="$mock_groups_all
+alias:x:1001:"
+expect_private_rejected "a group ID shared by another group"
+set_private_identity
+mock_passwd_all="$mock_passwd_all
+other:x:1002:1001:Other:/home/other:/bin/sh"
+expect_private_rejected "a group used by another user's primary identity"
+
+set_safe_identity
+mock_group=
+mock_groups_all='root:x:0:'
+mock_user='sco-relay:!:64001:10::/nonexistent:/usr/sbin/nologin'
+mock_passwd_all="root:x:0:0:root:/root:/bin/sh
+$mock_user"
+expect_identity_rejected_without_creation "an existing account without its dedicated group"
+set_safe_identity
+mock_user=
+mock_passwd_all='root:x:0:0:root:/root:/bin/sh
+other:x:1002:64001:Other:/home/other:/bin/sh'
+expect_identity_rejected_without_creation "an existing group used by another account"
+set_safe_identity
+mock_group=
+mock_groups_all='root:x:0:'
+mock_user_lookup_exit=3
+expect_identity_rejected_without_creation "a failed existing-user lookup with partial output"
+set_safe_identity
+mock_group_lookup_exit=3
+expect_identity_rejected_without_creation "a failed existing-group lookup with partial output"
+set_safe_identity
+mock_group=
+mock_groups_all='root:x:0:'
+mock_user_lookup_exit=2
+expect_identity_rejected_without_creation "a missing-user status carrying partial output"
+set_safe_identity
+mock_group_lookup_exit=2
+expect_identity_rejected_without_creation "a missing-group status carrying partial output"
+set_safe_identity
+mock_user_enum_exit=3
+expect_identity_rejected_without_creation "failed service-user enumeration with partial output"
+set_safe_identity
+mock_group_enum_exit=3
+expect_identity_rejected_without_creation "failed service-group enumeration with partial output"
+set_safe_identity
+mock_user='sco-relay:!:64001'
+expect_identity_rejected_without_creation "an incomplete targeted service-user record"
+set_safe_identity
+mock_group='sco-relay:x:64001'
+expect_identity_rejected_without_creation "an incomplete targeted service-group record"
+set_safe_identity
+mock_passwd_all='root:x:0:0:root:/root:/bin/sh
+sco-relay:!:64001:64001:Different:/nonexistent:/usr/sbin/nologin'
+expect_identity_rejected_without_creation "a targeted service-user record that disagrees with enumeration"
+set_safe_identity
+mock_user=
+mock_passwd_all='root:x:0:0:root:/root:/bin/sh'
+mock_groups_all='root:x:0:
+sco-relay:x:64001:other'
+expect_identity_rejected_without_creation "a targeted service-group record that disagrees with enumeration"
 
 set_safe_identity
 if ensure_service_identity sco-relay /usr/sbin/nologin; then
@@ -212,7 +384,8 @@ passwd() {
 
 mock_group=
 mock_user=
-mock_passwd_all=
+mock_groups_all='root:x:0:'
+mock_passwd_all='root:x:0:0:root:/root:/bin/sh'
 mock_groups=
 groupadd_calls=0
 useradd_calls=0
@@ -224,8 +397,6 @@ else
     fail "the mocked account creation path was refused"
 fi
 
-work=$(mktemp -d)
-trap 'rm -rf "$work"' 0 HUP INT TERM
 safe_dir=$work/etc/sco-relay
 safe_config=$safe_dir/sco-relay.conf
 mkdir -p "$safe_dir"

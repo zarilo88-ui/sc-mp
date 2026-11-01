@@ -101,17 +101,35 @@ if [ -n "$hard" ]; then
 fi
 
 # gid 0, or the owner's private group: named like the owning user, nobody listed in it, nobody else has it as primary group.
+# Keep this check inline: the source copy is not yet cleared for group-writable files, so it must not supply executable code.
+# BEGIN PRIVATE_GROUP_CHECK
 private_group() {   # <uid> <gid>
-    [ "$2" -eq 0 ] && return 0
-    owner_name=$(getent passwd "$1" | cut -d: -f1)
-    [ -n "$owner_name" ] || return 1
-    group_line=$(getent group "$2") || return 1
-    [ "${group_line%%:*}" = "$owner_name" ] || return 1
-    [ -z "${group_line##*:}" ] || return 1
-    other_users=$(getent passwd | awk -F: -v gid="$2" -v owner="$owner_name" '$4 == gid && $1 != owner { print $1; exit }')
-    [ -z "$other_users" ] || return 1
+    _private_uid=$1
+    _private_gid=$2
+    case "$_private_uid" in ''|*[!0-9]*) return 1 ;; esac
+    case "$_private_gid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$_private_gid" -eq 0 ] && return 0
+    _private_owner_line=$(getent passwd "$_private_uid" 2>/dev/null) || return 1
+    _private_owner=$(printf '%s\n' "$_private_owner_line" | awk -F: -v uid="$_private_uid" -v gid="$_private_gid" \
+        'NR == 1 && NF == 7 && $1 != "" && $3 == uid && $4 == gid { name = $1 } END { if (NR != 1 || name == "") exit 1; print name }') || return 1
+    _private_group_line=$(getent group "$_private_gid" 2>/dev/null) || return 1
+    printf '%s\n' "$_private_group_line" | awk -F: -v owner="$_private_owner" -v gid="$_private_gid" \
+        'NR == 1 && NF == 4 && $1 == owner && $3 == gid && $4 == "" { ok = 1 } END { exit !(NR == 1 && ok) }' || return 1
+    _private_users=$(getent passwd 2>/dev/null) || return 1
+    printf '%s\n' "$_private_users" | awk -F: -v owner="$_private_owner" -v uid="$_private_uid" -v gid="$_private_gid" -v expected="$_private_owner_line" '
+        NF != 7 || $1 == "" || $3 !~ /^[0-9]+$/ || $4 !~ /^[0-9]+$/ { bad = 1 }
+        $1 == owner { named++; if ($0 == expected) matched++ }
+        ($3 == uid || $4 == gid) && $1 != owner { bad = 1 }
+        END { exit !(NR > 0 && !bad && named == 1 && matched == 1) }' || return 1
+    _private_groups=$(getent group 2>/dev/null) || return 1
+    printf '%s\n' "$_private_groups" | awk -F: -v owner="$_private_owner" -v gid="$_private_gid" -v expected="$_private_group_line" '
+        NF != 4 || $1 == "" || $3 !~ /^[0-9]+$/ { bad = 1 }
+        $1 == owner { named++; if ($0 == expected) matched++ }
+        $3 == gid && $1 != owner { bad = 1 }
+        END { exit !(NR > 0 && !bad && named == 1 && matched == 1) }' || return 1
     return 0
 }
+# END PRIVATE_GROUP_CHECK
 groups_found=$(printf '%s\n' "$report" | sed -n 's/^GROUP //p')
 if [ -n "$groups_found" ]; then
     while read -r group_uid group_gid group_path; do

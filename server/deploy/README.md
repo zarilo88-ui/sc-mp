@@ -18,10 +18,11 @@ needs root, because it makes an account, writes `/etc` and `/usr/local/bin`, and
 
 The installer uses a dedicated `sco-relay` user and group. If either already exists, it requires a non-root UID, that
 group's GID as the primary group, a non-login shell, `/nonexistent` home, no supplementary groups, and no other account or
-group sharing the UID or GID. It also requires `passwd -S sco-relay` to report status `L`, which means password
-authentication is locked; it does not claim to prove that no password hash exists. It stops on a mismatch instead of
-adopting an unrelated identity. These checks use the identities and memberships visible through the host's NSS `getent`
-and `id` configuration; they cannot verify entries those backends do not expose or prevent a concurrent administrator
+group sharing the UID or GID. It also requires `passwd -S sco-relay` to report status `L`; that status does not prove
+the absence of a password hash or other authentication mechanisms. It refuses an existing account without its dedicated
+group before creating either identity, and refuses a group already used as another account's primary group before creating
+the service user. The checks require successful, well-formed targeted lookups and enumeration that agree through the host's
+NSS `getent` and `id` configuration; they cannot verify entries those backends do not expose or prevent a concurrent administrator
 changing them.
 It also stops if `/etc/sco-relay` or the config file path, including any existing ancestor, is a symbolic link, or if the
 config path is not a regular file. These are path checks before the ownership and mode changes; shell checks cannot make
@@ -42,8 +43,8 @@ It builds only the copy. The check refuses, and changes nothing:
 - a file or folder owned by anyone but root and the user who ran `sudo`;
 - a file or folder writable by everyone;
 - a file or folder writable by a group, unless the group is root's (gid 0) or the owner's private group: a group named like the
-  owning user, with nobody listed in it, that is no other account's primary group. A plain `git clone` made by the user who
-  then runs `sudo` passes on Ubuntu and Fedora; a group shared between users does not.
+  owning user, with nobody listed in it, that is no other account's primary group. Targeted lookups must agree with successful
+  user and group enumeration; failed, malformed or inconsistent results are refused.
 
 This catches common mistakes: a clone with loose permissions, a stray symlink. It does not protect you from someone who
 already controls your copy, because root still builds and runs what is in it. So run the installer only from a copy you made
@@ -167,8 +168,9 @@ sudo userdel sco-relay             # the group goes with it
 
 ## Evidence
 
-The kit was run on a build machine, from a committed copy of the repository, by a driver script that is not part of this
-repository. In fresh `ubuntu:24.04` and `debian:12` containers (no systemd) an ordinary user ran `sudo sh server/deploy/install.sh`
+The contributor reported running an earlier version of the kit on a build machine, from a committed copy of the repository,
+with a driver script that is not part of this repository. In fresh `ubuntu:24.04` and `debian:12` containers (no systemd)
+the report says an ordinary user ran `sudo sh server/deploy/install.sh`
 once, from a clone-like copy with group-writable files in a private group whose number differs from the user's number. That
 one command installed the missing tools, built and installed the relay and stayed in the foreground as it. The driver checked
 that the relay's own process, running as `sco-relay`, held the UDP port and logged that its session is up, and joined it with
@@ -182,8 +184,9 @@ symlink, holding a CMake cache, is never read. In an `ubuntu:24.04` container ru
 in the image so that nothing was installed while it ran, it did the same through the service, and the enabled service came
 back after the container was restarted.
 
-The CTest `relay_install_guard_checks` exercises only the account/path validation helpers, using mocked account commands and
-temporary paths. It does not execute the installer, create a real account, or change file ownership or service settings.
+The CTest `relay_install_guard_checks` exercises the account/path helpers and the inline private-group check using mocked
+account commands and temporary paths. It extracts only the function definition and does not execute the installer, create
+a real account, or change file ownership or service settings. The contributor's container report predates these guard changes.
 That is all. The installer was **not run on a real VM** by this review, and nothing here was **run in game**: no Star Citizen
 process was involved. The sandbox lines of the unit were exercised in a privileged container only. The `su` fallback of the
 foreground run (for a machine without `setpriv`) and distributions other than Ubuntu and Debian were not run. CTest does not

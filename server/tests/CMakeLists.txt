@@ -91,6 +91,7 @@ add_test(NAME relay_no_game_code_checks
 set_tests_properties(relay_no_game_code_checks PROPERTIES TIMEOUT 120)
 add_test(NAME relay_install_guard_checks
   COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/test_install_guard.sh"
-          "${SCO_RELAY_ROOT}/server/deploy/install_guard.sh")
+          "${SCO_RELAY_ROOT}/server/deploy/install_guard.sh"
+          "${SCO_RELAY_ROOT}/server/deploy/install.sh")
 set_tests_properties(relay_install_guard_checks PROPERTIES TIMEOUT 30)
 endif()

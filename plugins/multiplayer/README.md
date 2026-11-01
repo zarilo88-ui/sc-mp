@@ -304,9 +304,8 @@ that needs a connection needs a shell that grants admission. Report what `mod.lo
 
 ## Build/install and evidence boundary
 
-The pinned SDK is **2.4.0 release candidate 2** (release
-[`sdk-v2.4.0-rc.2`](https://github.com/scuba-sc/sco-core/releases/tag/sdk-v2.4.0-rc.2); the final
-`sdk-v2.4.0` will follow). It **contains G13, G3 and retained widgets**
+The pinned SDK is the immutable **2.4.0 release** (release
+[`sdk-v2.4.0`](https://github.com/scuba-sc/sco-core/releases/tag/sdk-v2.4.0)). It **contains G13, G3 and retained widgets**
 (`sc_private_session.h`, `sc_game_spatial.h`, `sco_widgets.h`), as every SDK
 since 2.2.0 has; sdk-v2.0.0 did not. The CI release job does not yet stage
 multiplayer. The external target refuses a missing header and never adds a host

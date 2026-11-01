@@ -63,7 +63,7 @@ ctest --test-dir build -C Release --output-on-failure
 The root build turns the relay on on Windows/Linux when SDK fetching is enabled (`SC_MP_BUILD_RELAY`;
 `-DSC_MP_BUILD_RELAY=OFF` leaves it out). It then downloads `sco-sdk-core-source-<version>.zip` from the same
 sco-core release as the SDK archive (`SCO_SDK_VERSION` and `SCO_SDK_RELEASE_TAG` in
-[cmake/ScoSdk.cmake](../cmake/ScoSdk.cmake); today SDK 2.4.0 release candidate 2, `sdk-v2.4.0-rc.2`), refuses it
+[cmake/ScoSdk.cmake](../cmake/ScoSdk.cmake); today SDK 2.4.0, `sdk-v2.4.0`), refuses it
 unless its SHA-256 matches `SCO_CORE_SOURCE_SHA256` in `cmake/ScoCoreSource.cmake`, unpacks it under the build folder
 and adds it with `add_subdirectory` (`EXCLUDE_FROM_ALL`, the Star Citizen game pack off, the kit's own tests off).
 Only the kit's network library is built, plus `src/net/udp_win.cpp` on Windows or `src/net/udp_posix.cpp` on Linux and
@@ -99,15 +99,19 @@ section of [plugins/multiplayer/README.md](../plugins/multiplayer/README.md).
 
 ## Tests
 
-Five tests, registered with CTest, run on both Windows and Linux with the rest of sc-mp:
+The relay tests are registered with CTest alongside the rest of sc-mp:
 
 | Test | What it proves |
 | --- | --- |
 | `test_server` | the unit tests: the config reader, the address rule, the wire bytes (golden vectors for `multiplayer.relay`, `multiplayer.near_up` and `multiplayer.near.<slot>`), the roster, nearby-only forwarding, the session over the kit's in-memory test network, the run loop, and a real session over loopback UDP |
 | `sco_relay_program` | the real program: how it starts, what it says for a bad config or a taken port, and that it exits 0 after SIGTERM or SIGINT |
 | `net_boundary_checks` | that the checks below fire when they should, on altered copies of the kit's files |
-| `relay_no_game_code` | that the server holds no game code and touches the kit's network library in one file |
+| `relay_no_game_code` | that the server and shared `plugins/multiplayer/relay_wire.h` hold no game code, and that the server touches the kit's network library in one file |
 | `relay_no_game_code_checks` | that the source gate permits the guarded Windows SDK headers only at their use sites and rejects other Windows headers or parent paths |
+| `relay_no_implicit_link_directives` | that MSVC `#pragma comment` and `__pragma(comment)` link inputs are rejected in production sources, on both Windows and Linux |
+
+`test_server` and `relay_no_implicit_link_directives` run on Windows and Linux. The process and binary/link-boundary
+tests run on Linux except for `sco_relay_windows_process`, which runs on Windows.
 
 `test_server` includes `tests/net_mem.h` from the extracted kit (a seeded lossy in-memory network); the server
 itself does not.
@@ -121,21 +125,31 @@ keep stable. So the server touches the library in one place only.
   Its header, `server/net_boundary.h`, gives the rest of the server small types of its own and includes nothing from
   sco-core. The relay's own messages come from `plugins/multiplayer/relay_wire.h`, which includes nothing either.
 - `server/tools/check-no-game-code.sh` (the test `relay_no_game_code`) reads the production set only,
-  `server/*.cpp`, `server/*.h` and `cmake/ScoCoreSource.cmake`. It fails when any file but the boundary file
+  `server/*.cpp`, `server/*.h`, the shared `plugins/multiplayer/relay_wire.h` and `cmake/ScoCoreSource.cmake`. It fails when any file but the boundary file
   includes one of the library's headers (the `sco/net/` ones or `sc_net.h`) or writes `sco::net::`, even in a
-  comment; when an `#include` is not one of our own `server/<name>` headers (a header in a subfolder such as
-  `server/tests/` is not one), `plugins/multiplayer/relay_wire.h` (the only file outside `server/` that is allowed), or a
-  standard or POSIX header (plus `windows.h` in `main.cpp` under `_WIN32` and `sal.h` in `log.h` under `_MSC_VER`;
-  other Windows headers and uses outside those files need explicit allowances; a name with `..` in it is never
-  allowed, even `server/../...`); when the kit was not configured with `SCO_GAME_SC=OFF`; and when the program links
-  anything but the server library, the kit's network library and the two socket files, or those libraries hold other
-  objects. It finds an `#include` wherever it hides: behind a comment between the `#` and `include`, after a
+  comment; when an `#include` is not a same-directory server header, the shared wire header at its fixed relative
+  path, or a standard or POSIX header (plus `windows.h` in `main.cpp` under `_WIN32` and `sal.h` in `log.h` under
+  `_MSC_VER`; other Windows headers and uses outside those files need explicit allowances); an SDK header that is
+  shadowed before the pinned kit path; any explicit product include path other than the kit's exact `include/` folder;
+  or an actual compile command that adds another include path, a forced include, a PCH, a compiler plugin or a response
+  file. A repository-root include directory is absent from the product targets, so nested files such as
+  `bits/stl_vector.h` cannot shadow transitive system headers. Compiler or linker environment overrides such as
+  `CPATH` and `LIBRARY_PATH` are refused at configure, build and test time. A name with `..` is refused except the
+  shared wire header's one fixed relative include. The server's compiled source list must match the reviewed
+  `server/*.cpp` set, not just archive member names. The gate also checks that the kit was configured with
+  `SCO_GAME_SC=OFF`, the program links only the server library, the kit's network library and the two socket files,
+  and the network archives contain only their expected objects. It finds an `#include` wherever it hides: behind a
+  comment between the `#` and `include`, after a
   backslash-newline splice, or spelt with the `%:` digraph.
-  The link is read twice: from what CMake declares for each target, including the libraries a target passes on to
-  whatever links it (`INTERFACE_LINK_LIBRARIES`), and from the program's real link line, the `link.txt` that Makefile
-  generators write. The check fails when that file is missing: Ninja writes none, so the relay is checked with a
+  The compile input is checked from CMake's generated `compile_commands.json`, which includes the global, target and
+  source-specific compiler options used for the relay and its two kit libraries. The link is read twice: from what
+  CMake declares for each target, including the libraries a target passes on to whatever links it
+  (`INTERFACE_LINK_LIBRARIES`), and from the program's real link line, the `link.txt` that Makefile generators write.
+  The check fails when either generated file is missing: Ninja writes no `link.txt`, so the relay is checked with a
   Makefile generator (the default on Linux). It splits the words of the link line on commas, so a library inside a
-  `-Wl,...` list counts like any other, and it fails on an `@response` file, which would hide the words from it.
+  `-Wl,...` list counts like any other, and it fails on an `@response` file, which would hide the words from it. It
+  also refuses linker scripts, linker plugins and input remapping, library search paths, raw `.obj` files, duplicate or
+  substituted archives, unknown forwarded linker options and positional inputs.
 - `server/tools/check-net-boundary.sh <extracted kit>` needs no compiler. It checks the declarations the boundary
   uses, the constants, the lines of behaviour no compiler can see (what `Core` relays and to whom, who checks the seat
   limit, the private ranges, which interface a socket binds), and the blob id of each kit file the server compiles

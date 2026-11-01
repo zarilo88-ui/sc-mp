@@ -43,3 +43,81 @@ elseif(_macro_output MATCHES "LNK1104" AND _macro_output MATCHES "${_macro_missi
 else()
   message(FATAL_ERROR "MSVC macro-expanded #pragma probe failed for an unrelated reason: ${_macro_output}")
 endif()
+
+# Determine whether a leading/trailing empty LIB component adds the current directory to LINK's default-library
+# search path. The repository guard rejects empty entries unless this compiler experiment proves their behavior.
+get_filename_component(_tool_dir "${SCO_RELAY_COMPILER}" DIRECTORY)
+set(_linker "${_tool_dir}/link.exe")
+set(_librarian "${_tool_dir}/lib.exe")
+if(NOT EXISTS "${_linker}" OR NOT EXISTS "${_librarian}")
+  message(FATAL_ERROR "the selected MSVC toolset is missing link.exe or lib.exe")
+endif()
+set(_empty_lib_root "${SCO_RELAY_TEST_BINARY_DIR}/lib-search")
+set(_empty_lib_work "${_empty_lib_root}/work")
+set(_empty_lib_safe "${_empty_lib_root}/safe")
+file(MAKE_DIRECTORY "${_empty_lib_work}" "${_empty_lib_safe}")
+file(WRITE "${_empty_lib_root}/implementation.cpp" "extern \"C\" int scmp_empty_lib_probe() { return 0; }\n")
+file(WRITE "${_empty_lib_root}/entry.cpp"
+  "#pragma comment(lib, \"scmp_empty_lib_probe.lib\")\nextern \"C\" int scmp_empty_lib_probe();\nint main() { return scmp_empty_lib_probe(); }\n")
+execute_process(
+  COMMAND "${SCO_RELAY_COMPILER}" /nologo /c /GS- /Zl
+          "/Fo${_empty_lib_work}/implementation.obj" "${_empty_lib_root}/implementation.cpp"
+  WORKING_DIRECTORY "${_empty_lib_work}"
+  RESULT_VARIABLE _implementation_result
+  OUTPUT_VARIABLE _implementation_stdout
+  ERROR_VARIABLE _implementation_stderr)
+if(NOT _implementation_result EQUAL 0)
+  message(FATAL_ERROR "MSVC empty-LIB search fixture could not compile its implementation: ${_implementation_stdout}${_implementation_stderr}")
+endif()
+execute_process(
+  COMMAND "${_librarian}" /nologo "/OUT:${_empty_lib_work}/scmp_empty_lib_probe.lib"
+          "${_empty_lib_work}/implementation.obj"
+  WORKING_DIRECTORY "${_empty_lib_work}"
+  RESULT_VARIABLE _librarian_result
+  OUTPUT_VARIABLE _librarian_stdout
+  ERROR_VARIABLE _librarian_stderr)
+if(NOT _librarian_result EQUAL 0)
+  message(FATAL_ERROR "MSVC empty-LIB search fixture could not create its library: ${_librarian_stdout}${_librarian_stderr}")
+endif()
+execute_process(
+  COMMAND "${SCO_RELAY_COMPILER}" /nologo /c /GS- /Zl
+          "/Fo${_empty_lib_work}/entry.obj" "${_empty_lib_root}/entry.cpp"
+  WORKING_DIRECTORY "${_empty_lib_work}"
+  RESULT_VARIABLE _entry_result
+  OUTPUT_VARIABLE _entry_stdout
+  ERROR_VARIABLE _entry_stderr)
+if(NOT _entry_result EQUAL 0)
+  message(FATAL_ERROR "MSVC empty-LIB search fixture could not compile its entry point: ${_entry_stdout}${_entry_stderr}")
+endif()
+
+foreach(_case IN ITEMS plain trailing_empty)
+  if(_case STREQUAL "plain")
+    set(_library_environment "${_empty_lib_safe}")
+  else()
+    set(_library_environment "${_empty_lib_safe};")
+  endif()
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env "INCLUDE=" "LIB=${_library_environment}"
+            "LINK=" "_LINK_=" "CL=" "_CL_="
+            "${_linker}" /NOLOGO /ENTRY:main /SUBSYSTEM:CONSOLE
+            "/OUT:${_empty_lib_work}/${_case}.exe" "${_empty_lib_work}/entry.obj"
+    WORKING_DIRECTORY "${_empty_lib_work}"
+    RESULT_VARIABLE _link_result
+    OUTPUT_VARIABLE _link_stdout
+    ERROR_VARIABLE _link_stderr)
+  set(_link_output "${_link_stdout}${_link_stderr}")
+  if(_link_result EQUAL 0)
+    set(${_case}_link_result success)
+  elseif(_link_output MATCHES "LNK1104" AND _link_output MATCHES "scmp_empty_lib_probe\\.lib")
+    set(${_case}_link_result missing_probe_library)
+  else()
+    message(FATAL_ERROR "MSVC empty-LIB search probe failed for an unrelated reason: ${_link_output}")
+  endif()
+endforeach()
+if(plain_link_result STREQUAL "missing_probe_library" AND trailing_empty_link_result STREQUAL "success")
+  message(FATAL_ERROR "MSVC treats an empty LIB component as the current directory; do not normalize it away")
+elseif("${plain_link_result}" STREQUAL "${trailing_empty_link_result}")
+  message(STATUS "MSVC empty LIB components add no current-directory search beyond ordinary default-library lookup (${plain_link_result})")
+else()
+  message(FATAL_ERROR "MSVC empty LIB search behavior was inconsistent between the control and trailing-empty cases")
+endif()

@@ -13,7 +13,43 @@ elseif((NOT DEFINED SC_MP_FETCH_SDK OR SC_MP_FETCH_SDK) AND
   include("${CMAKE_CURRENT_LIST_DIR}/server/tools/check-compiler-bootstrap.cmake")
 endif()
 
+# The MSVC LIB environment variable can select linker inputs before the post-project guard can identify the selected
+# compiler and SDK roots. For relay builds, keep it out of CMake's compiler/ABI probes; those probes only need to
+# compile objects into a static library. Restore the developer environment immediately after project() so the
+# guard can validate and snapshot its legitimate paths before any product target is built.
+set(_sc_mp_relay_requested_before_project FALSE)
+if(DEFINED SC_MP_BUILD_RELAY)
+  if(SC_MP_BUILD_RELAY)
+    set(_sc_mp_relay_requested_before_project TRUE)
+  endif()
+elseif((NOT DEFINED SC_MP_FETCH_SDK OR SC_MP_FETCH_SDK) AND
+       CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+  set(_sc_mp_relay_requested_before_project TRUE)
+endif()
+if(_sc_mp_relay_requested_before_project AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" AND
+   NOT "$ENV{LIB}" STREQUAL "")
+  set(_sc_mp_relay_preproject_lib "$ENV{LIB}")
+  unset(ENV{LIB})
+  if(DEFINED CMAKE_TRY_COMPILE_TARGET_TYPE)
+    set(_sc_mp_preproject_try_compile_type_was_set TRUE)
+    set(_sc_mp_preproject_try_compile_type "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
+  else()
+    set(_sc_mp_preproject_try_compile_type_was_set FALSE)
+  endif()
+  set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+  set(_sc_mp_restore_preproject_lib TRUE)
+endif()
+
 project(sc-mp LANGUAGES C CXX)
+
+if(_sc_mp_restore_preproject_lib)
+  set(ENV{LIB} "${_sc_mp_relay_preproject_lib}")
+  if(_sc_mp_preproject_try_compile_type_was_set)
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE "${_sc_mp_preproject_try_compile_type}")
+  else()
+    unset(CMAKE_TRY_COMPILE_TARGET_TYPE)
+  endif()
+endif()
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # Clang may load configuration files from machine-specific locations, and those files may add include or link inputs.

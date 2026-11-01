@@ -3,7 +3,7 @@
 set(_sco_relay_bootstrap_environment_variables
   CPATH CPLUS_INCLUDE_PATH C_INCLUDE_PATH OBJC_INCLUDE_PATH
   CFLAGS CXXFLAGS OBJCFLAGS LDFLAGS
-  LIBRARY_PATH LIB LINK _LINK_
+  LIBRARY_PATH LINK _LINK_
   GCC_EXEC_PREFIX COMPILER_PATH CL _CL_ CCC_OVERRIDE_OPTIONS)
 foreach(_sco_relay_environment_name IN LISTS _sco_relay_bootstrap_environment_variables)
   if(NOT "$ENV{${_sco_relay_environment_name}}" STREQUAL "")

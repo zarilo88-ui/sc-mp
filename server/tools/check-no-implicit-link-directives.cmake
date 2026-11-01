@@ -18,9 +18,9 @@ foreach(_sco_relay_source IN LISTS _sco_relay_source_files)
   string(REPLACE "\\\r\n" "" _sco_relay_source_spliced "${_sco_relay_source_lower}")
   string(REPLACE "\\\n" "" _sco_relay_source_spliced "${_sco_relay_source_spliced}")
   # Remove ordinary string/character literals before comments so literal text cannot masquerade as a directive.
-  string(REGEX REPLACE "\"([^\"\\\\]|\\\\.)*\"" "\"\"" _sco_relay_source_checked
+  string(REGEX REPLACE "\"([^\"\\\\\n]|\\\\.)*\"" "\"\"" _sco_relay_source_checked
     "${_sco_relay_source_spliced}")
-  string(REGEX REPLACE "'([^'\\\\]|\\\\.)*'" "''" _sco_relay_source_checked
+  string(REGEX REPLACE "'([^'\\\\\n]|\\\\.)*'" "''" _sco_relay_source_checked
     "${_sco_relay_source_checked}")
   string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" " " _sco_relay_source_checked
     "${_sco_relay_source_checked}")
@@ -38,8 +38,13 @@ foreach(_sco_relay_source IN LISTS _sco_relay_source_files)
   # operator invocation, so scan a newline-normalized copy too. Token pasting can synthesize hidden directive tokens;
   # production source has no need for it, so fail closed when it appears.
   string(REPLACE "\n" " " _sco_relay_source_pragma_scan "${_sco_relay_source_checked}")
+  # The pragma name can itself be a macro (for example, #define M comment followed by #pragma M(lib, ...)).
+  # Production has no need for source pragmas except #pragma once, so remove only that exact directive and fail
+  # closed on the rest rather than trying to model every compiler's macro-expansion rules.
+  string(REGEX REPLACE "(^|\n)[ ]*(#|%:) *pragma +once[ ]*(\n|$)" "\\1 " _sco_relay_source_without_safe_pragma
+    "${_sco_relay_source_checked}")
   if(_sco_relay_source_checked MATCHES "(^|\n)[ ]*(#|%:) *define[^\n]*(##|%:%:)" OR
-     _sco_relay_source_checked MATCHES "(#|%:) *pragma *comment" OR
+     _sco_relay_source_without_safe_pragma MATCHES "(^|\n)[ ]*(#|%:) *pragma([^a-z0-9_]|$)" OR
      _sco_relay_source_pragma_scan MATCHES "(^|[^a-z0-9_])__pragma([^a-z0-9_]|$)" OR
      _sco_relay_source_pragma_scan MATCHES "(^|[^a-z0-9_])_pragma([^a-z0-9_]|$)")
     message(FATAL_ERROR

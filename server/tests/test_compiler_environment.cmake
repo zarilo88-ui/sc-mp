@@ -7,6 +7,8 @@ endif()
 file(REMOVE_RECURSE "${SCO_RELAY_TEST_BINARY_DIR}")
 set(_good_include "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/include")
 set(_bad_include "${SCO_RELAY_TEST_BINARY_DIR}/external/include")
+set(_good_library "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/lib/x64")
+set(_bad_library "${SCO_RELAY_TEST_BINARY_DIR}/external/lib")
 set(_compiler "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe")
 set(_spoof_program_files "${SCO_RELAY_TEST_BINARY_DIR}/spoofed-program-files")
 set(_spoof_sdk_include "${_spoof_program_files}/Windows Kits/10/Include/10.0.26100.0/ucrt")
@@ -62,7 +64,7 @@ string(CONCAT _msvc_config_cache_text
   "CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO:STRING=/debug\n"
   "CMAKE_STATIC_LINKER_FLAGS_DEBUG:STRING=\nCMAKE_STATIC_LINKER_FLAGS_MINSIZEREL:STRING=\n"
   "CMAKE_STATIC_LINKER_FLAGS_RELEASE:STRING=\nCMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO:STRING=\n")
-file(MAKE_DIRECTORY "${_good_include}" "${_bad_include}" "${_spoof_sdk_include}"
+file(MAKE_DIRECTORY "${_good_include}" "${_bad_include}" "${_good_library}" "${_bad_library}" "${_spoof_sdk_include}"
   "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64")
 file(WRITE "${_cache}"
   "CMAKE_C_FLAGS:STRING=\nCMAKE_CXX_FLAGS:STRING=\nCMAKE_EXE_LINKER_FLAGS:STRING=\n"
@@ -128,9 +130,14 @@ if(_real_hook_result EQUAL 0)
   message(FATAL_ERROR "a caller-supplied CMake project hook should fail before project()")
 endif()
 
+# Model the standard compiler library search list. All MSVC fixture subprocesses inherit it unless a negative test
+# replaces it with an external path.
+set(ENV{LIB} "${_good_library};")
+
 execute_process(
   COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env
     "INCLUDE=${_good_include}"
+    "LIB=${_good_library}"
     "${SCO_RELAY_CMAKE_COMMAND}"
     "-DCMAKE_CXX_COMPILER_ID=MSVC"
     "-DCMAKE_CXX_COMPILER=${_compiler}"
@@ -207,6 +214,55 @@ if(_changed_result EQUAL 0)
 endif()
 
 execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=${_good_include}" "LIB=${_bad_library}"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_snapshot}"
+    "-DSCO_RELAY_CMAKE_CACHE=${_cache}"
+    -DSCO_RELAY_COMPILER_ID=MSVC
+    -P "${_script}"
+  RESULT_VARIABLE _changed_library_result
+  OUTPUT_VARIABLE _changed_library_stdout
+  ERROR_VARIABLE _changed_library_stderr)
+if(_changed_library_result EQUAL 0)
+  message(FATAL_ERROR "a post-configure external LIB path should fail")
+endif()
+
+execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=${_good_include}" "LIB=${_bad_library}"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DCMAKE_CXX_COMPILER_ID=MSVC"
+    "-DCMAKE_CXX_COMPILER=${_compiler}"
+    "-DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.26100.0"
+    ${_cmake_flag_cli_args}
+    "-DCMAKE_BINARY_DIR=${SCO_RELAY_TEST_BINARY_DIR}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${SCO_RELAY_TEST_BINARY_DIR}/external-library-config.txt"
+    -P "${_script}"
+  RESULT_VARIABLE _external_library_result
+  OUTPUT_VARIABLE _external_library_stdout
+  ERROR_VARIABLE _external_library_stderr)
+if(_external_library_result EQUAL 0)
+  message(FATAL_ERROR "an external LIB directory should fail configuration")
+endif()
+
+execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=${_good_include}"
+    "LIB=${_good_library};;${_good_library}"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DCMAKE_CXX_COMPILER_ID=MSVC"
+    "-DCMAKE_CXX_COMPILER=${_compiler}"
+    "-DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.26100.0"
+    ${_cmake_flag_cli_args}
+    "-DCMAKE_BINARY_DIR=${SCO_RELAY_TEST_BINARY_DIR}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${SCO_RELAY_TEST_BINARY_DIR}/empty-library-entry.txt"
+    -P "${_script}"
+  RESULT_VARIABLE _empty_library_entry_result
+  OUTPUT_VARIABLE _empty_library_entry_stdout
+  ERROR_VARIABLE _empty_library_entry_stderr)
+if(_empty_library_entry_result EQUAL 0)
+  message(FATAL_ERROR "an interior empty LIB search entry should fail configuration")
+endif()
+
+execute_process(
   COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=${_bad_include}"
     "${SCO_RELAY_CMAKE_COMMAND}"
     "-DCMAKE_CXX_COMPILER_ID=MSVC"
@@ -254,6 +310,20 @@ execute_process(
   ERROR_VARIABLE _clang_include_stderr)
 if(_clang_include_result EQUAL 0)
   message(FATAL_ERROR "INCLUDE on non-MSVC should fail configuration")
+endif()
+
+execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=" "LIB=${_good_library}"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DCMAKE_CXX_COMPILER_ID=Clang"
+    "-DCMAKE_BINARY_DIR=${SCO_RELAY_TEST_BINARY_DIR}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${SCO_RELAY_TEST_BINARY_DIR}/clang-lib.txt"
+    -P "${_script}"
+  RESULT_VARIABLE _clang_library_result
+  OUTPUT_VARIABLE _clang_library_stdout
+  ERROR_VARIABLE _clang_library_stderr)
+if(_clang_library_result EQUAL 0)
+  message(FATAL_ERROR "LIB on non-MSVC should fail configuration")
 endif()
 
 execute_process(

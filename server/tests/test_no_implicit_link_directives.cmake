@@ -38,6 +38,16 @@ function(_sco_relay_expect_refused description source_text)
 endfunction()
 
 _sco_relay_expect_refused("plain pragma" "#pragma comment(lib, \"game.lib\")")
+_sco_relay_expect_refused("pragma after safe once directive"
+  "int relay_value;\n#pragma once\n#pragma comment(lib, \"game.lib\")")
+_sco_relay_expect_refused("digraph pragma after safe once directive"
+  "int relay_value;\n%:pragma once\n%:pragma comment(lib, \"game.lib\")")
+_sco_relay_expect_refused("pragma after quote in line comment"
+  "// \"\n#pragma comment(lib, \"game.lib\")")
+_sco_relay_expect_refused("pragma after apostrophe in line comment"
+  "// '\n#pragma comment(lib, \"game.lib\") // '")
+_sco_relay_expect_refused("macro-expanded pragma name"
+  "#define LINKER_COMMENT comment\n#pragma LINKER_COMMENT(lib, \"game.lib\")")
 _sco_relay_expect_refused("plain __pragma" "__pragma(comment(linker, \"/DEFAULTLIB:game.lib\"))")
 _sco_relay_expect_refused("__pragma macro alias" "#define ADD_LINKER_PRAGMA __pragma\nADD_LINKER_PRAGMA(comment(lib, \"game.lib\"))")
 _sco_relay_expect_refused("__pragma newline call" "__pragma\n(comment(lib, \"game.lib\"))")

@@ -109,10 +109,6 @@ add_subdirectory(plugins/multiplayer)
 if(SC_MP_BUILD_RELAY)
   include("${CMAKE_CURRENT_LIST_DIR}/cmake/ScoCoreSource.cmake")
   add_subdirectory(server)
-  set(_sc_mp_msvc_ide_build OFF)
-  if(MSVC AND CMAKE_GENERATOR MATCHES "^Visual Studio")
-    set(_sc_mp_msvc_ide_build ON)
-  endif()
   add_custom_target(sco_relay_link_directive_check
     COMMAND "${CMAKE_COMMAND}"
             "-DSCO_RELAY_ROOT=${CMAKE_CURRENT_LIST_DIR}"
@@ -127,7 +123,8 @@ if(SC_MP_BUILD_RELAY)
             "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${SCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT}"
             "-DSCO_RELAY_COMPILER_ID=${CMAKE_CXX_COMPILER_ID}"
             "-DSCO_RELAY_CMAKE_GENERATOR=${CMAKE_GENERATOR}"
-            "-DSCO_RELAY_MSVC_IDE_BUILD=${_sc_mp_msvc_ide_build}"
+            "-DSCO_RELAY_MSVC_IDE_BUILD=${SCO_RELAY_MSVC_IDE_BUILD}"
+            "-DSCO_RELAY_MSVC_EMPTY_LIB_PROBE=${SCO_RELAY_MSVC_EMPTY_LIB_PROBE}"
             "-DSCO_RELAY_CMAKE_CACHE=${CMAKE_BINARY_DIR}/CMakeCache.txt"
             -P "${CMAKE_CURRENT_LIST_DIR}/server/tools/check-compiler-environment.cmake"
     VERBATIM)

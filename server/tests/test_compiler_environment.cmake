@@ -8,6 +8,7 @@ file(REMOVE_RECURSE "${SCO_RELAY_TEST_BINARY_DIR}")
 set(_good_include "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/include")
 set(_bad_include "${SCO_RELAY_TEST_BINARY_DIR}/external/include")
 set(_good_library "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/lib/x64")
+set(_good_library_alt "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/lib/x86")
 set(_bad_library "${SCO_RELAY_TEST_BINARY_DIR}/external/lib")
 set(_compiler "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe")
 set(_spoof_program_files "${SCO_RELAY_TEST_BINARY_DIR}/spoofed-program-files")
@@ -64,7 +65,7 @@ string(CONCAT _msvc_config_cache_text
   "CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO:STRING=/debug\n"
   "CMAKE_STATIC_LINKER_FLAGS_DEBUG:STRING=\nCMAKE_STATIC_LINKER_FLAGS_MINSIZEREL:STRING=\n"
   "CMAKE_STATIC_LINKER_FLAGS_RELEASE:STRING=\nCMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO:STRING=\n")
-file(MAKE_DIRECTORY "${_good_include}" "${_bad_include}" "${_good_library}" "${_bad_library}" "${_spoof_sdk_include}"
+file(MAKE_DIRECTORY "${_good_include}" "${_bad_include}" "${_good_library}" "${_good_library_alt}" "${_bad_library}" "${_spoof_sdk_include}"
   "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64")
 file(WRITE "${_cache}"
   "CMAKE_C_FLAGS:STRING=\nCMAKE_CXX_FLAGS:STRING=\nCMAKE_EXE_LINKER_FLAGS:STRING=\n"
@@ -202,6 +203,7 @@ endif()
 # The Visual Studio generator builds through MSBuild project properties, where Microsoft documents that INCLUDE is
 # ignored; MSBuild can still add an empty component to the child environment. The build-time guard must use the
 # already validated configure snapshot only for this exact generator/compiler pair.
+file(APPEND "${_snapshot}" "msvc_empty_lib_probe=passed\n")
 execute_process(
   COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=;"
     "${SCO_RELAY_CMAKE_COMMAND}"
@@ -210,12 +212,95 @@ execute_process(
     -DSCO_RELAY_COMPILER_ID=MSVC
     "-DSCO_RELAY_CMAKE_GENERATOR=Visual Studio 17 2022"
     -DSCO_RELAY_MSVC_IDE_BUILD=ON
+    -DSCO_RELAY_MSVC_EMPTY_LIB_PROBE=ON
     -P "${_script}"
   RESULT_VARIABLE _msbuild_include_result
   OUTPUT_VARIABLE _msbuild_include_stdout
   ERROR_VARIABLE _msbuild_include_stderr)
 if(NOT _msbuild_include_result EQUAL 0)
   message(FATAL_ERROR "the verified Visual Studio build may ignore its MSBuild INCLUDE environment: ${_msbuild_include_stderr}${_msbuild_include_stdout}")
+endif()
+
+execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=;" "LIB=;"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_snapshot}"
+    "-DSCO_RELAY_CMAKE_CACHE=${_cache}"
+    -DSCO_RELAY_COMPILER_ID=MSVC
+    "-DSCO_RELAY_CMAKE_GENERATOR=Visual Studio 17 2022"
+    -DSCO_RELAY_MSVC_IDE_BUILD=ON
+    -DSCO_RELAY_MSVC_EMPTY_LIB_PROBE=ON
+    -P "${_script}"
+  RESULT_VARIABLE _msbuild_empty_library_result
+  OUTPUT_VARIABLE _msbuild_empty_library_stdout
+  ERROR_VARIABLE _msbuild_empty_library_stderr)
+if(NOT _msbuild_empty_library_result EQUAL 0)
+  message(FATAL_ERROR "a probed Visual Studio build with no usable LIB directories should not add search paths: ${_msbuild_empty_library_stderr}${_msbuild_empty_library_stdout}")
+endif()
+
+foreach(_empty_lib_case IN ITEMS leading interior trailing)
+  if(_empty_lib_case STREQUAL "interior")
+    set(_case_snapshot "${SCO_RELAY_TEST_BINARY_DIR}/multiple-libraries.txt")
+    execute_process(
+      COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env
+        "INCLUDE=${_good_include}" "LIB=${_good_library};${_good_library_alt}"
+        "${SCO_RELAY_CMAKE_COMMAND}"
+        "-DCMAKE_CXX_COMPILER_ID=MSVC"
+        "-DCMAKE_CXX_COMPILER=${_compiler}"
+        "-DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.26100.0"
+        ${_cmake_flag_cli_args}
+        "-DCMAKE_BINARY_DIR=${SCO_RELAY_TEST_BINARY_DIR}"
+        "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_case_snapshot}"
+        -P "${_script}"
+      RESULT_VARIABLE _multi_library_configure_result
+      OUTPUT_VARIABLE _multi_library_configure_stdout
+      ERROR_VARIABLE _multi_library_configure_stderr)
+    if(NOT _multi_library_configure_result EQUAL 0)
+      message(FATAL_ERROR "trusted multi-directory LIB should configure: ${_multi_library_configure_stderr}${_multi_library_configure_stdout}")
+    endif()
+    # This fixture models the configure-time MSVC probe; its separate Windows test executes the real compiler probe.
+    file(APPEND "${_case_snapshot}" "msvc_empty_lib_probe=passed\n")
+    set(_case_libraries "${_good_library};;${_good_library_alt}")
+  elseif(_empty_lib_case STREQUAL "leading")
+    set(_case_snapshot "${_snapshot}")
+    set(_case_libraries ";${_good_library}")
+  else()
+    set(_case_snapshot "${_snapshot}")
+    set(_case_libraries "${_good_library};")
+  endif()
+  execute_process(
+    COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=;" "LIB=${_case_libraries}"
+      "${SCO_RELAY_CMAKE_COMMAND}"
+      "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_case_snapshot}"
+      "-DSCO_RELAY_CMAKE_CACHE=${_cache}"
+      -DSCO_RELAY_COMPILER_ID=MSVC
+      "-DSCO_RELAY_CMAKE_GENERATOR=Visual Studio 17 2022"
+      -DSCO_RELAY_MSVC_IDE_BUILD=ON
+      -DSCO_RELAY_MSVC_EMPTY_LIB_PROBE=ON
+      -P "${_script}"
+    RESULT_VARIABLE _empty_lib_build_result
+    OUTPUT_VARIABLE _empty_lib_build_stdout
+    ERROR_VARIABLE _empty_lib_build_stderr)
+  if(NOT _empty_lib_build_result EQUAL 0)
+    message(FATAL_ERROR "a probed Visual Studio build should accept ${_empty_lib_case} empty LIB components without adding paths: ${_empty_lib_build_stderr}${_empty_lib_build_stdout}")
+  endif()
+endforeach()
+
+execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=;" "LIB=${_bad_library}"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_snapshot}"
+    "-DSCO_RELAY_CMAKE_CACHE=${_cache}"
+    -DSCO_RELAY_COMPILER_ID=MSVC
+    "-DSCO_RELAY_CMAKE_GENERATOR=Visual Studio 17 2022"
+    -DSCO_RELAY_MSVC_IDE_BUILD=ON
+    -DSCO_RELAY_MSVC_EMPTY_LIB_PROBE=ON
+    -P "${_script}"
+  RESULT_VARIABLE _msbuild_untrusted_library_result
+  OUTPUT_VARIABLE _msbuild_untrusted_library_stdout
+  ERROR_VARIABLE _msbuild_untrusted_library_stderr)
+if(_msbuild_untrusted_library_result EQUAL 0)
+  message(FATAL_ERROR "the Visual Studio probe must not authorize a new LIB directory")
 endif()
 
 execute_process(
@@ -226,6 +311,7 @@ execute_process(
     -DSCO_RELAY_COMPILER_ID=MSVC
     -DSCO_RELAY_CMAKE_GENERATOR=Ninja
     -DSCO_RELAY_MSVC_IDE_BUILD=ON
+    -DSCO_RELAY_MSVC_EMPTY_LIB_PROBE=ON
     -P "${_script}"
   RESULT_VARIABLE _invalid_msbuild_include_result
   OUTPUT_VARIABLE _invalid_msbuild_include_stdout

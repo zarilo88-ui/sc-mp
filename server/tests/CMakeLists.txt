@@ -71,6 +71,7 @@ if(WIN32)
   set_tests_properties(sco_relay_windows_process PROPERTIES TIMEOUT 60)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     add_test(NAME relay_msvc_pragma_link COMMAND "${CMAKE_COMMAND}"
+      "-DSCO_RELAY_CMAKE_COMMAND=${CMAKE_COMMAND}"
       "-DSCO_RELAY_COMPILER=${CMAKE_CXX_COMPILER}"
       "-DSCO_RELAY_TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/msvc-pragma-test"
       -P "${CMAKE_CURRENT_SOURCE_DIR}/test_msvc_pragma_link.cmake")

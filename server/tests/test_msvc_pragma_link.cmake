@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Confirm with MSVC which source-level pragma forms emit linker library records.
-if(NOT DEFINED SCO_RELAY_COMPILER OR NOT DEFINED SCO_RELAY_TEST_BINARY_DIR)
-  message(FATAL_ERROR "test requires the MSVC compiler and a temporary binary directory")
+if(NOT DEFINED SCO_RELAY_CMAKE_COMMAND OR NOT DEFINED SCO_RELAY_COMPILER OR NOT DEFINED SCO_RELAY_TEST_BINARY_DIR)
+  message(FATAL_ERROR "test requires CMake, the MSVC compiler and a temporary binary directory")
 endif()
 
 file(REMOVE_RECURSE "${SCO_RELAY_TEST_BINARY_DIR}")
@@ -44,8 +44,9 @@ else()
   message(FATAL_ERROR "MSVC macro-expanded #pragma probe failed for an unrelated reason: ${_macro_output}")
 endif()
 
-# Determine whether a leading/trailing empty LIB component adds the current directory to LINK's default-library
-# search path. The repository guard rejects empty entries unless this compiler experiment proves their behavior.
+# Microsoft documents that LINK searches its working directory before LIB. Verify that each empty LIB list form
+# preserves that baseline. The safety claim that dropping empty entries adds no search directory follows from that
+# documented order; this probe does not try to distinguish a repeated working-directory lookup.
 get_filename_component(_tool_dir "${SCO_RELAY_COMPILER}" DIRECTORY)
 set(_linker "${_tool_dir}/link.exe")
 set(_librarian "${_tool_dir}/lib.exe")
@@ -102,7 +103,7 @@ foreach(_case IN ITEMS plain leading_empty interior_empty trailing_empty)
     set(_library_environment "${_empty_lib_safe};")
   endif()
   execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E env "INCLUDE=" "LIB=${_library_environment}"
+    COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=" "LIB=${_library_environment}"
             "LINK=" "_LINK_=" "CL=" "_CL_="
             "${_linker}" /NOLOGO /ENTRY:main /SUBSYSTEM:CONSOLE
             "/OUT:${_empty_lib_work}/${_case}.exe" "${_empty_lib_work}/entry.obj"
@@ -119,9 +120,12 @@ foreach(_case IN ITEMS plain leading_empty interior_empty trailing_empty)
     message(FATAL_ERROR "MSVC empty-LIB search probe failed for an unrelated reason: ${_link_output}")
   endif()
 endforeach()
+if(NOT plain_link_result STREQUAL "success")
+  message(FATAL_ERROR "MSVC did not resolve a default library from LINK's documented working-directory search")
+endif()
 foreach(_case IN ITEMS leading_empty interior_empty trailing_empty)
-  if(NOT "${${_case}_link_result}" STREQUAL "${plain_link_result}")
-    message(FATAL_ERROR "MSVC empty LIB component changes current-directory library resolution (${_case}: ${${_case}_link_result}; plain: ${plain_link_result})")
+  if(NOT "${${_case}_link_result}" STREQUAL "success")
+    message(FATAL_ERROR "MSVC empty LIB component changed current-directory library resolution (${_case}: ${${_case}_link_result})")
   endif()
 endforeach()
-message(STATUS "MSVC empty LIB components do not change default-library resolution versus a plain trusted path (${plain_link_result})")
+message(STATUS "MSVC preserved working-directory default-library resolution with plain and empty-component LIB forms")

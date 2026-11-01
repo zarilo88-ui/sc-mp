@@ -185,11 +185,14 @@ keep stable. So the server touches the library in one place only.
   match the selected CMake platform defaults at configure time and stay unchanged through the build. The standard
   MSVC `INCLUDE` and `LIB` lists are allowed only within the selected compiler and Windows SDK version directories
   or the installed .NET Framework SDK root. CMake validates those paths at configuration. The Visual Studio
-  generator uses its generated project include properties; Microsoft's compiler documentation says it ignores
-  `INCLUDE` in this build mode, so the build-time check uses the validated snapshot rather than MSBuild's altered
-  child environment ([Microsoft's include-search documentation](https://learn.microsoft.com/en-us/cpp/preprocessor/hash-include-directive-c-cpp?view=msvc-170)). Other generators must keep the environment unchanged through the build. The Windows configure
-  step removes inherited `LIB` only during CMake's compiler-identification probes, then restores and validates it
-  before generating product targets. On Linux, compile input is checked from CMake's generated `compile_commands.json`,
+  generator uses project include properties; Microsoft's compiler documentation says it ignores `INCLUDE` in that
+  build mode, so the build-time check uses the validated snapshot instead of MSBuild's changed child environment
+  ([include-search documentation](https://learn.microsoft.com/en-us/cpp/preprocessor/hash-include-directive-c-cpp?view=msvc-170)). LINK searches its working directory before `LIB`. A configure-time MSVC probe checks that plain and empty-component `LIB` forms preserve default-library resolution from that already-searched directory. The safety rule for dropping empty components relies on the documented search order rather than claiming the probe distinguishes a repeated working-directory lookup. The build-time gate discards empty `LIB`
+  components only for the probed Visual Studio generator, requires all remaining paths to match the validated
+  snapshot, and permits an empty list as a reduction in search paths. Added or changed nonempty paths fail. Other
+  generators must keep the environment unchanged through the build. The Windows configure step removes inherited
+  `LIB` only during CMake's compiler-identification probes, then restores and validates it before generating product
+  targets. LINK's search order is documented [here](https://learn.microsoft.com/en-us/cpp/build/reference/dot-lib-files-as-linker-input?view=msvc-170). On Linux, compile input is checked from CMake's generated `compile_commands.json`,
   which includes the global, target and source-specific compiler options used for the relay and its two kit libraries.
   The Windows Visual Studio generator does not produce that database in this workflow; Windows instead runs the
   environment/default-flag guards, source-level pragma scanner, and the MSVC `_Pragma` linker-record probe. The link is read twice: from what

@@ -3,6 +3,17 @@ cmake_minimum_required(VERSION 3.20)
 project(sc-mp LANGUAGES C CXX)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# Clang may load configuration files from machine-specific locations, and those files may add include or link inputs.
+# Disable default configuration loading for every Clang compile and link command in this build.
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+  add_compile_options("$<$<COMPILE_LANGUAGE:C>:--no-default-config>")
+  add_link_options("$<$<LINK_LANGUAGE:C>:--no-default-config>")
+endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:--no-default-config>")
+  add_link_options("$<$<LINK_LANGUAGE:CXX>:--no-default-config>")
+endif()
+
 # Standalone build of sc-mp against an extracted, hash-verified, PUBLISHED sco-core SDK archive
 # (cmake/ScoSdk.cmake). To use an SDK you unpacked yourself, pass -DSCO_SDK_INCLUDE_DIR=<dir>/include
 # and -DSC_MP_FETCH_SDK=OFF; the directory must sit next to the SDK's SHA256SUMS.
@@ -17,6 +28,13 @@ else()
   set(_sc_mp_relay_default OFF)
 endif()
 option(SC_MP_BUILD_RELAY "Build the relay server from the published core-source kit" ${_sc_mp_relay_default})
+if(SC_MP_BUILD_RELAY)
+  include("${CMAKE_CURRENT_LIST_DIR}/server/tools/check-compiler-environment.cmake")
+endif()
+if(SC_MP_BUILD_RELAY AND SC_MP_BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # The relay's boundary check audits the compiler inputs CMake actually generated, including source-specific flags.
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+endif()
 if(SC_MP_BUILD_RELAY AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
   message(FATAL_ERROR "SC_MP_BUILD_RELAY requires Windows or Linux")
 endif()
@@ -41,6 +59,22 @@ add_subdirectory(plugins/multiplayer)
 if(SC_MP_BUILD_RELAY)
   include("${CMAKE_CURRENT_LIST_DIR}/cmake/ScoCoreSource.cmake")
   add_subdirectory(server)
+  add_custom_target(sco_relay_link_directive_check
+    COMMAND "${CMAKE_COMMAND}"
+            "-DSCO_RELAY_ROOT=${CMAKE_CURRENT_LIST_DIR}"
+            -P "${CMAKE_CURRENT_LIST_DIR}/server/tools/check-no-implicit-link-directives.cmake"
+    VERBATIM)
+  add_dependencies(sco_net sco_relay_link_directive_check)
+  add_dependencies(sco_relay_sockets sco_relay_link_directive_check)
+  add_dependencies(sco_relay_server sco_relay_link_directive_check)
+  add_dependencies(sco-relay sco_relay_link_directive_check)
+  add_custom_target(sco_relay_compiler_environment_check
+    COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_LIST_DIR}/server/tools/check-compiler-environment.cmake"
+    VERBATIM)
+  add_dependencies(sco_net sco_relay_compiler_environment_check)
+  add_dependencies(sco_relay_sockets sco_relay_compiler_environment_check)
+  add_dependencies(sco_relay_server sco_relay_compiler_environment_check)
+  add_dependencies(sco-relay sco_relay_compiler_environment_check)
 elseif(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
   message(STATUS "sc-mp: relay unsupported on ${CMAKE_SYSTEM_NAME}")
 else()

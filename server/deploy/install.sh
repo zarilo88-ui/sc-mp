@@ -176,7 +176,7 @@ cmake --build "$build_dir/out" --target sco-relay --parallel "$threads"
 [ -x "$build_dir/out/server/sco-relay" ] || die "the build finished, but $build_dir/out/server/sco-relay is not there"
 
 # ---- the account, the program, the config ------------------------------------------------------------------------
-# A system account has no password and no login shell: it exists only to run this one service.
+# Password authentication is locked and the account has no login shell: it exists only to run this service.
 
 nologin=$(command -v nologin || true)
 nologin=${nologin:-/usr/sbin/nologin}
@@ -184,6 +184,8 @@ command -v groupadd > /dev/null 2>&1 && command -v useradd > /dev/null 2>&1 \
     || die "groupadd and useradd are needed to make the $account account (the shadow-utils package)"
 command -v getent > /dev/null 2>&1 && command -v id > /dev/null 2>&1 \
     || die "getent and id are needed to verify the $account account and group"
+command -v passwd > /dev/null 2>&1 \
+    || die "passwd is needed to verify that password authentication is locked for $account"
 . "$src/server/deploy/install_guard.sh"
 ensure_service_identity "$account" "$nologin" \
     || die "the existing or newly created $account identity is not isolated and safe to use"

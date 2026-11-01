@@ -18,7 +18,11 @@ mock_group=""
 mock_groups_all=""
 mock_user=""
 mock_passwd_all=""
+mock_id_uid=""
+mock_id_gid=""
 mock_groups=""
+mock_passwd_status=""
+mock_passwd_exit=0
 groupadd_calls=0
 useradd_calls=0
 chown_calls=0
@@ -59,12 +63,26 @@ useradd() {
     useradd_calls=$((useradd_calls + 1))
     mock_user='sco-relay:!:64001:64001::/nonexistent:/usr/sbin/nologin'
     mock_passwd_all=$mock_user
+    mock_id_uid=64001
+    mock_id_gid=64001
     mock_groups=64001
+    mock_passwd_status='sco-relay L 2026-11-01 0 99999 7 -1'
 }
 
 id() {
-    [ "$1" = -G ] && [ "$2" = sco-relay ] || return 2
-    printf '%s\n' "$mock_groups"
+    [ "$2" = sco-relay ] || return 2
+    case "$1" in
+        -u) printf '%s\n' "$mock_id_uid" ;;
+        -g) printf '%s\n' "$mock_id_gid" ;;
+        -G) printf '%s\n' "$mock_groups" ;;
+        *) return 2 ;;
+    esac
+}
+
+passwd() {
+    [ "$1" = -S ] && [ "$2" = sco-relay ] || return 2
+    [ "$mock_passwd_exit" -eq 0 ] || return "$mock_passwd_exit"
+    printf '%s\n' "$mock_passwd_status"
 }
 
 chown() {
@@ -82,7 +100,11 @@ set_safe_identity() {
     mock_groups_all=$mock_group
     mock_user='sco-relay:!:64001:64001::/nonexistent:/usr/sbin/nologin'
     mock_passwd_all=$mock_user
+    mock_id_uid=64001
+    mock_id_gid=64001
     mock_groups=64001
+    mock_passwd_status='sco-relay L 2026-11-01 0 99999 7 -1'
+    mock_passwd_exit=0
     groupadd_calls=0
     useradd_calls=0
 }
@@ -117,6 +139,10 @@ mock_groups_all=$mock_group
 expect_identity_rejected "a group with listed members"
 set_safe_identity
 mock_groups_all="$mock_group
+sco-relay:x:64002:"
+expect_identity_rejected "duplicate service-group name records"
+set_safe_identity
+mock_groups_all="$mock_group
 alias-group:x:64001:another-user"
 expect_identity_rejected "a shared numeric group ID"
 set_safe_identity
@@ -136,12 +162,53 @@ mock_user='sco-relay:!:64001:10::/nonexistent:/usr/sbin/nologin'
 mock_passwd_all=$mock_user
 expect_identity_rejected "a service account with a different primary group"
 set_safe_identity
+mock_passwd_all="$mock_user
+$mock_user"
+expect_identity_rejected "duplicate service-account passwd records"
+set_safe_identity
+mock_id_uid=64002
+expect_identity_rejected "an id UID that disagrees with getent"
+set_safe_identity
+mock_id_gid=64002
+expect_identity_rejected "an id GID that disagrees with getent"
+set_safe_identity
 mock_user='sco-relay:!:64001:64001::/nonexistent:/bin/sh'
 mock_passwd_all=$mock_user
 expect_identity_rejected "a service account with a login shell"
 set_safe_identity
 mock_groups='64001 10'
 expect_identity_rejected "a service account with supplementary groups"
+set_safe_identity
+mock_passwd_status='sco-relay P 2026-11-01 0 99999 7 -1'
+expect_identity_rejected "an unlocked password status"
+set_safe_identity
+mock_passwd_status='sco-relay NP 2026-11-01 0 99999 7 -1'
+expect_identity_rejected "a no-password status that is not verifiably locked"
+set_safe_identity
+mock_passwd_status='sco-relay X 2026-11-01 0 99999 7 -1'
+expect_identity_rejected "an unknown password status"
+set_safe_identity
+mock_passwd_status="sco-relay L 2026-11-01 0 99999 7 -1
+sco-relay L 2026-11-01 0 99999 7 -1"
+expect_identity_rejected "multiple passwd status records"
+set_safe_identity
+mock_passwd_exit=127
+expect_identity_rejected "passwd status command failure"
+set_safe_identity
+saved_path=$PATH
+unset -f passwd
+PATH=/nonexistent
+if ensure_service_identity sco-relay /usr/sbin/nologin 2>/dev/null; then
+    fail "a missing passwd command was accepted"
+else
+    ok "a missing passwd command is refused"
+fi
+PATH=$saved_path
+passwd() {
+    [ "$1" = -S ] && [ "$2" = sco-relay ] || return 2
+    [ "$mock_passwd_exit" -eq 0 ] || return "$mock_passwd_exit"
+    printf '%s\n' "$mock_passwd_status"
+}
 
 mock_group=
 mock_user=

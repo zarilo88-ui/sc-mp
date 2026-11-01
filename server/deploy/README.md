@@ -16,12 +16,13 @@ sudo sh server/deploy/install.sh
 Run it from your own copy of this repository (a clone or an unpacked archive) on the machine that will host the relay. It
 needs root, because it makes an account, writes `/etc` and `/usr/local/bin`, and sets up a service.
 
-The installer uses a dedicated `sco-relay` user and group. If either already exists, it checks that the account is not root,
-uses that group's GID as its primary group, has a non-login shell and `/nonexistent` home, has no supplementary groups, and
-that the UID and GID are not shared with other users or groups. It stops on a mismatch instead of adopting an unrelated
-system identity. These checks use the identities and memberships visible through the host's NSS `getent` and `id`
-configuration; they cannot verify entries those backends do not expose or prevent a concurrent administrator changing
-them.
+The installer uses a dedicated `sco-relay` user and group. If either already exists, it requires a non-root UID, that
+group's GID as the primary group, a non-login shell, `/nonexistent` home, no supplementary groups, and no other account or
+group sharing the UID or GID. It also requires `passwd -S sco-relay` to report status `L`, which means password
+authentication is locked; it does not claim to prove that no password hash exists. It stops on a mismatch instead of
+adopting an unrelated identity. These checks use the identities and memberships visible through the host's NSS `getent`
+and `id` configuration; they cannot verify entries those backends do not expose or prevent a concurrent administrator
+changing them.
 It also stops if `/etc/sco-relay` or the config file path, including any existing ancestor, is a symbolic link, or if the
 config path is not a regular file. These are path checks before the ownership and mode changes; shell checks cannot make
 those later filesystem operations atomic against a concurrent privileged path change.
@@ -69,7 +70,7 @@ and trust.
 | Path | What | Who |
 | --- | --- | --- |
 | `/usr/local/bin/sco-relay` | the program | root, mode 0755 |
-| `sco-relay` (system account and group) | runs the relay; no password, no login shell, no home folder | |
+| `sco-relay` (system account and group) | runs the relay; password authentication is locked (`passwd -S` status `L`), no login shell or home folder | |
 | `/etc/sco-relay/sco-relay.conf` | the one config file: [the example](../sco-relay.example.conf) with a fresh random passphrase | root, group `sco-relay`, mode 0640 |
 | `/etc/systemd/system/sco-relay.service` | the unit ([sco-relay.service](sco-relay.service)); only where systemd is running | root, mode 0644 |
 

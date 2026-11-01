@@ -11,11 +11,15 @@ _install_guard_fail() {
 }
 
 ensure_service_identity() {   # <account> <nologin path>
-    # Isolation is checked against the account and group entries exposed by the
-    # host's NSS/getent and id configuration; the helper cannot see entries those
-    # backends do not enumerate, or prevent a concurrent administrator changing them.
+    # Identity comes from NSS getent/id and password-lock status from passwd -S;
+    # no password hash or shadow contents are parsed or logged here. The helper
+    # cannot see entries NSS backends do not enumerate or stop an admin change.
     _guard_account=$1
     _guard_nologin=$2
+    command -v passwd > /dev/null 2>&1 || {
+        _install_guard_fail "passwd is required to verify that password authentication is locked"
+        return 1
+    }
     getent group > /dev/null 2>&1 || {
         _install_guard_fail "cannot enumerate groups through getent"
         return 1
@@ -57,8 +61,8 @@ ensure_service_identity() {   # <account> <nologin path>
         return 1
     }
     if ! printf '%s\n' "$_guard_all_groups" | awk -F: -v account="$_guard_account" -v gid="$_guard_group_gid" \
-        '$1 == account && $3 == gid { found = 1 } $3 == gid && $1 != account { other = 1 } END { exit !(found && !other) }'; then
-        _install_guard_fail "the $_guard_account GID is missing from group enumeration or aliased by another group"
+        '$1 == account { named++; if ($3 == gid) matched = 1 } $3 == gid && $1 != account { other = 1 } END { exit !(named == 1 && matched && !other) }'; then
+        _install_guard_fail "the $_guard_account group name or GID is duplicated or missing from group enumeration"
         return 1
     fi
 
@@ -103,21 +107,54 @@ ensure_service_identity() {   # <account> <nologin path>
         *) _install_guard_fail "the $_guard_account user must have a non-login shell"; return 1 ;;
     esac
 
-    _guard_passwd_all=$(getent passwd 2>/dev/null) || {
-        _install_guard_fail "cannot verify that the $_guard_account group has no other primary users"
+    _guard_id_uid=$(id -u "$_guard_account" 2>/dev/null) || {
+        _install_guard_fail "cannot read the $_guard_account UID through id"
         return 1
     }
-    if ! printf '%s\n' "$_guard_passwd_all" | awk -F: -v account="$_guard_account" -v uid="$_guard_uid" -v gid="$_guard_group_gid" \
-        '$1 == account { found = 1 } $3 == uid && $1 != account { other_uid = 1 } $4 == gid && $1 != account { other_gid = 1 } END { exit !(found && !other_uid && !other_gid) }'; then
-        _install_guard_fail "the $_guard_account UID or group is missing from passwd enumeration or shared with another user"
+    case "$_guard_id_uid" in
+        ''|*[!0-9]*) _install_guard_fail "id returned an invalid UID for $_guard_account"; return 1 ;;
+    esac
+    [ "$_guard_id_uid" = "$_guard_uid" ] || {
+        _install_guard_fail "id and getent disagree about the $_guard_account UID"
+        return 1
+    }
+    _guard_id_gid=$(id -g "$_guard_account" 2>/dev/null) || {
+        _install_guard_fail "cannot read the $_guard_account primary GID through id"
+        return 1
+    }
+    case "$_guard_id_gid" in
+        ''|*[!0-9]*) _install_guard_fail "id returned an invalid primary GID for $_guard_account"; return 1 ;;
+    esac
+    [ "$_guard_id_gid" = "$_guard_user_gid" ] || {
+        _install_guard_fail "id and getent disagree about the $_guard_account primary GID"
+        return 1
+    }
+
+    _guard_passwd_status=$(passwd -S "$_guard_account" 2>/dev/null) || {
+        _install_guard_fail "cannot verify the $_guard_account password status"
+        return 1
+    }
+    if ! printf '%s\n' "$_guard_passwd_status" | awk -v account="$_guard_account" \
+        'NR == 1 && NF >= 2 && $1 == account && $2 == "L" { ok = 1 } END { exit !(NR == 1 && ok) }'; then
+        _install_guard_fail "passwd -S must report exactly one locked (L) status for $_guard_account"
         return 1
     fi
 
-    _guard_groups=$(id -G "$_guard_account" 2>/dev/null) || {
+    _guard_passwd_all=$(getent passwd 2>/dev/null) || {
+        _install_guard_fail "cannot verify the unique $_guard_account passwd record"
+        return 1
+    }
+    if ! printf '%s\n' "$_guard_passwd_all" | awk -F: -v account="$_guard_account" -v uid="$_guard_uid" -v gid="$_guard_group_gid" \
+        '$1 == account { named++; if ($3 == uid && $4 == gid) matched = 1 } $3 == uid && $1 != account { other_uid = 1 } $4 == gid && $1 != account { other_gid = 1 } END { exit !(named == 1 && matched && !other_uid && !other_gid) }'; then
+        _install_guard_fail "the $_guard_account passwd record is duplicated, missing, inconsistent, or shared with another user"
+        return 1
+    fi
+
+    _guard_id_groups=$(id -G "$_guard_account" 2>/dev/null) || {
         _install_guard_fail "cannot verify the $_guard_account user's group membership"
         return 1
     }
-    if ! printf '%s\n' "$_guard_groups" | awk -v gid="$_guard_group_gid" 'NR == 1 && NF == 1 && $1 == gid { ok = 1 } END { exit !(NR == 1 && ok) }'; then
+    if ! printf '%s\n' "$_guard_id_groups" | awk -v gid="$_guard_group_gid" 'NR == 1 && NF == 1 && $1 == gid { ok = 1 } END { exit !(NR == 1 && ok) }'; then
         _install_guard_fail "the $_guard_account user must belong only to its dedicated group"
         return 1
     fi

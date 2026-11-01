@@ -70,7 +70,7 @@ authorize G13 and are never imported into broker policy. Existing launcher
 firewall allowances are not broker admission or a guarantee of reachability.
 Actual interface/firewall behavior still requires owner Windows acceptance.
 
-**Admission and activation status** (source reading only; not run in game). The older discussion in this section referred
+**Admission and activation status** (source reading only; not run in game). An earlier README revision referred
 to sc-offline `96686b9` and sco-core `844e136`; its `100.64.0.0/10` example does not describe current source behavior.
 At sc-offline `e0ed7dba102b3463b04e02af1ff49a2addabe7ea`, the launcher accepts configured `multiplayer_allow` entries
 only when they are private IPv4 ranges, and the admission check uses that configured set when checking firewall

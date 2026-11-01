@@ -304,6 +304,23 @@ if(_msbuild_untrusted_library_result EQUAL 0)
 endif()
 
 execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=;" "LIB=${_good_library};;${_bad_library}"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_snapshot}"
+    "-DSCO_RELAY_CMAKE_CACHE=${_cache}"
+    -DSCO_RELAY_COMPILER_ID=MSVC
+    "-DSCO_RELAY_CMAKE_GENERATOR=Visual Studio 17 2022"
+    -DSCO_RELAY_MSVC_IDE_BUILD=ON
+    -DSCO_RELAY_MSVC_EMPTY_LIB_PROBE=ON
+    -P "${_script}"
+  RESULT_VARIABLE _msbuild_mixed_untrusted_library_result
+  OUTPUT_VARIABLE _msbuild_mixed_untrusted_library_stdout
+  ERROR_VARIABLE _msbuild_mixed_untrusted_library_stderr)
+if(_msbuild_mixed_untrusted_library_result EQUAL 0)
+  message(FATAL_ERROR "empty Visual Studio LIB separators must not authorize a new external directory")
+endif()
+
+execute_process(
   COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=;"
     "${SCO_RELAY_CMAKE_COMMAND}"
     "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_snapshot}"

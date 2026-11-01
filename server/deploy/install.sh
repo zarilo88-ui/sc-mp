@@ -182,15 +182,16 @@ nologin=$(command -v nologin || true)
 nologin=${nologin:-/usr/sbin/nologin}
 command -v groupadd > /dev/null 2>&1 && command -v useradd > /dev/null 2>&1 \
     || die "groupadd and useradd are needed to make the $account account (the shadow-utils package)"
-if ! getent group "$account" > /dev/null 2>&1; then
-    groupadd --system "$account"
-fi
-if ! id "$account" > /dev/null 2>&1; then
-    useradd --system --gid "$account" --home-dir /nonexistent --no-create-home --shell "$nologin" "$account"
-fi
+command -v getent > /dev/null 2>&1 && command -v id > /dev/null 2>&1 \
+    || die "getent and id are needed to verify the $account account and group"
+. "$src/server/deploy/install_guard.sh"
+ensure_service_identity "$account" "$nologin" \
+    || die "the existing or newly created $account identity is not isolated and safe to use"
 
 # root owns the folder and the file; the account may enter the folder and read the file; nobody else may.
+validate_config_paths "$config_dir" "$config" || die "the config path or one of its ancestors is not a safe regular path"
 install -d -o root -g "$account" -m 0750 "$config_dir"
+validate_config_paths "$config_dir" "$config" || die "the config path or one of its ancestors changed to an unsafe path"
 install -o root -g root -m 0755 "$build_dir/out/server/sco-relay" "$program"
 
 if [ ! -e "$config" ]; then
@@ -209,8 +210,11 @@ if [ ! -e "$config" ]; then
     done < "$example" > "$temporary"
     [ "$(grep -c '^passphrase = [0-9a-f]\{64\}$' "$temporary")" -eq 1 ] \
         || die "the example config has no 'passphrase = ' line to fill in"
-    chown root:"$account" "$temporary"
-    chmod 0640 "$temporary"
+    set_config_permissions "$config_dir" "$temporary" "$account" \
+        || die "could not safely set permissions on the new config"
+    validate_config_paths "$config_dir" "$config" \
+        || die "the config path changed to an unsafe path during installation"
+    [ ! -e "$config" ] || die "a config file appeared during installation; nothing was replaced"
     mv "$temporary" "$config"
     temporary=""
     passphrase=""
@@ -219,8 +223,8 @@ else
     say "kept the existing $config, and with it the passphrase"
 fi
 # An existing file gets the same owner and mode: the service must be able to read it, and other users must not.
-chown root:"$account" "$config"
-chmod 0640 "$config"
+set_config_permissions "$config_dir" "$config" "$account" \
+    || die "could not safely set permissions on the config"
 
 port=$(sed -n 's/^[[:space:]]*port[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$config" | head -n 1)
 port=${port:-64091}

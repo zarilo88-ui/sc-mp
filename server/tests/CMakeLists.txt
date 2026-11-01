@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-# The server's tests, five of them, all registered with CTest so that `ctest` runs them with the rest of sc-mp:
+# The server's tests, six of them, all registered with CTest so that `ctest` runs them with the rest of sc-mp:
 #   test_server          the unit tests (config, address rule, wire bytes, roster, nearby-only forwarding, session,
 #                        run loop, real UDP on loopback)
 #   sco_relay_program    runs the real program and checks its exit status
@@ -14,6 +14,8 @@
 #                           digraph, a library hidden in a -Wl, list or an @response file on the link line, and a
 #                           missing link.txt (one case per hole, printing ok: or FAIL: H1 to H5), and that an include
 #                           inside a comment is still accepted
+#   relay_install_guard_checks checks identity and path validation with mocks and temporary files only; it does not run
+#                              the privileged installer
 # Linux only, like the server.
 
 add_executable(test_server
@@ -87,4 +89,8 @@ add_test(NAME relay_no_game_code_checks
   COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/test_no_game_code.sh"
           "${SCO_RELAY_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/relay-build-facts.txt")
 set_tests_properties(relay_no_game_code_checks PROPERTIES TIMEOUT 120)
+add_test(NAME relay_install_guard_checks
+  COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/test_install_guard.sh"
+          "${SCO_RELAY_ROOT}/server/deploy/install_guard.sh")
+set_tests_properties(relay_install_guard_checks PROPERTIES TIMEOUT 30)
 endif()

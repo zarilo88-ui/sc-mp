@@ -16,6 +16,16 @@ sudo sh server/deploy/install.sh
 Run it from your own copy of this repository (a clone or an unpacked archive) on the machine that will host the relay. It
 needs root, because it makes an account, writes `/etc` and `/usr/local/bin`, and sets up a service.
 
+The installer uses a dedicated `sco-relay` user and group. If either already exists, it checks that the account is not root,
+uses that group's GID as its primary group, has a non-login shell and `/nonexistent` home, has no supplementary groups, and
+that the UID and GID are not shared with other users or groups. It stops on a mismatch instead of adopting an unrelated
+system identity. These checks use the identities and memberships visible through the host's NSS `getent` and `id`
+configuration; they cannot verify entries those backends do not expose or prevent a concurrent administrator changing
+them.
+It also stops if `/etc/sco-relay` or the config file path, including any existing ancestor, is a symbolic link, or if the
+config path is not a regular file. These are path checks before the ownership and mode changes; shell checks cannot make
+those later filesystem operations atomic against a concurrent privileged path change.
+
 With systemd, the command installs a service that starts at boot, starts it, and returns. **Without systemd** (a container, a
 minimal image) there is no service to start, so the command itself becomes the relay: after printing where the passphrase is,
 which port to open and the command for starting the relay again later, it runs the relay in the foreground as the
@@ -171,7 +181,9 @@ symlink, holding a CMake cache, is never read. In an `ubuntu:24.04` container ru
 in the image so that nothing was installed while it ran, it did the same through the service, and the enabled service came
 back after the container was restarted.
 
-That is all. It was **not run on a real VM**, and nothing here was **run in game**: no Star Citizen process was involved.
-The sandbox lines of the unit were exercised in a privileged container only. The `su` fallback of the foreground run (for a
-machine without `setpriv`) and distributions other than Ubuntu and Debian were not run. There is no CTest test for the kit,
-because it needs root, a container and the network.
+The CTest `relay_install_guard_checks` exercises only the account/path validation helpers, using mocked account commands and
+temporary paths. It does not execute the installer, create a real account, or change file ownership or service settings.
+That is all. The installer was **not run on a real VM** by this review, and nothing here was **run in game**: no Star Citizen
+process was involved. The sandbox lines of the unit were exercised in a privileged container only. The `su` fallback of the
+foreground run (for a machine without `setpriv`) and distributions other than Ubuntu and Debian were not run. CTest does not
+run the installer, because that needs root, a container and the network.

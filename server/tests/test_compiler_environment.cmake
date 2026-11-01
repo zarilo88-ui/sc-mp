@@ -199,6 +199,41 @@ if(NOT _unchanged_result EQUAL 0)
   message(FATAL_ERROR "unchanged selected MSVC INCLUDE should pass the build check: ${_unchanged_stderr}${_unchanged_stdout}")
 endif()
 
+# The Visual Studio generator builds through MSBuild project properties, where Microsoft documents that INCLUDE is
+# ignored; MSBuild can still add an empty component to the child environment. The build-time guard must use the
+# already validated configure snapshot only for this exact generator/compiler pair.
+execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=;"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_snapshot}"
+    "-DSCO_RELAY_CMAKE_CACHE=${_cache}"
+    -DSCO_RELAY_COMPILER_ID=MSVC
+    "-DSCO_RELAY_CMAKE_GENERATOR=Visual Studio 17 2022"
+    -DSCO_RELAY_MSVC_IDE_BUILD=ON
+    -P "${_script}"
+  RESULT_VARIABLE _msbuild_include_result
+  OUTPUT_VARIABLE _msbuild_include_stdout
+  ERROR_VARIABLE _msbuild_include_stderr)
+if(NOT _msbuild_include_result EQUAL 0)
+  message(FATAL_ERROR "the verified Visual Studio build may ignore its MSBuild INCLUDE environment: ${_msbuild_include_stderr}${_msbuild_include_stdout}")
+endif()
+
+execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=;"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_snapshot}"
+    "-DSCO_RELAY_CMAKE_CACHE=${_cache}"
+    -DSCO_RELAY_COMPILER_ID=MSVC
+    -DSCO_RELAY_CMAKE_GENERATOR=Ninja
+    -DSCO_RELAY_MSVC_IDE_BUILD=ON
+    -P "${_script}"
+  RESULT_VARIABLE _invalid_msbuild_include_result
+  OUTPUT_VARIABLE _invalid_msbuild_include_stdout
+  ERROR_VARIABLE _invalid_msbuild_include_stderr)
+if(_invalid_msbuild_include_result EQUAL 0)
+  message(FATAL_ERROR "the Visual Studio INCLUDE exception must reject a non-Visual-Studio generator")
+endif()
+
 execute_process(
   COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=${_good_include};${_bad_include}"
     "${SCO_RELAY_CMAKE_COMMAND}"

@@ -66,7 +66,14 @@ if(NOT DEFINED SCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT OR SCO_RELAY_COMPILER_ENV
 endif()
 
 set(_sco_relay_include_dirs "")
-if(NOT "$ENV{INCLUDE}" STREQUAL "")
+if(SCO_RELAY_MSVC_IDE_BUILD)
+  if(DEFINED CMAKE_CXX_COMPILER_ID OR NOT DEFINED SCO_RELAY_COMPILER_ID OR
+     NOT SCO_RELAY_COMPILER_ID STREQUAL "MSVC" OR NOT DEFINED SCO_RELAY_CMAKE_GENERATOR OR
+     NOT SCO_RELAY_CMAKE_GENERATOR MATCHES "^Visual Studio")
+    message(FATAL_ERROR "sc-mp relay: the Visual Studio INCLUDE exception requires a generated MSVC project build")
+  endif()
+endif()
+if(NOT SCO_RELAY_MSVC_IDE_BUILD AND NOT "$ENV{INCLUDE}" STREQUAL "")
   set(_sco_relay_raw_include_dirs "$ENV{INCLUDE}")
   foreach(_sco_relay_include_dir IN LISTS _sco_relay_raw_include_dirs)
     if(_sco_relay_include_dir STREQUAL "" OR NOT IS_DIRECTORY "${_sco_relay_include_dir}")
@@ -249,7 +256,12 @@ else()
   if(DEFINED SCO_RELAY_COMPILER_ID AND NOT "${SCO_RELAY_COMPILER_ID}" STREQUAL "${_sco_relay_snapshot_compiler_id}")
     message(FATAL_ERROR "sc-mp relay: selected compiler changed after configuration; reconfigure")
   endif()
-  if(NOT "${_sco_relay_include_dirs}" STREQUAL "${_sco_relay_snapshot_include_dirs}")
+  # MSVC ignores INCLUDE while building through Visual Studio project files and uses their explicit include
+  # properties instead. MSBuild may add an empty list entry to INCLUDE, so compare the configured, validated
+  # snapshot rather than reinterpreting that irrelevant process variable here. The generator/compiler pair is
+  # embedded by CMake when it creates this custom target.
+  if(NOT SCO_RELAY_MSVC_IDE_BUILD AND
+     NOT "${_sco_relay_include_dirs}" STREQUAL "${_sco_relay_snapshot_include_dirs}")
     message(FATAL_ERROR "sc-mp relay: INCLUDE changed after configuration; reconfigure")
   endif()
   if(NOT "${_sco_relay_library_dirs}" STREQUAL "${_sco_relay_snapshot_library_dirs}")

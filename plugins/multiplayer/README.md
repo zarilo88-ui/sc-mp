@@ -70,41 +70,18 @@ authorize G13 and are never imported into broker policy. Existing launcher
 firewall allowances are not broker admission or a guarantee of reachability.
 Actual interface/firewall behavior still requires owner Windows acceptance.
 
-**Admission in the production shell** (from reading the source at the commits linked here; not run in game). The
-shell does not report a fixed Unknown. It answers the host's admission check from live reads of the Windows Firewall
-rules and the TCP table: sc-offline builds the check in
-[`src/dllmain.cpp` lines 250 to 259](https://github.com/scuba-sc/sc-offline/blob/96686b95adc2e07e4cf3d0db15c4ec3a79cb1a8e/src/dllmain.cpp#L250-L259)
-and passes it to the host kit at
-[line 430](https://github.com/scuba-sc/sc-offline/blob/96686b95adc2e07e4cf3d0db15c4ec3a79cb1a8e/src/dllmain.cpp#L430),
-and sco-core gives G13 that same check
-([`src/game/host.cpp` line 154](https://github.com/scuba-sc/sco-core/blob/844e136ccb280ad8cb43f73bc43c9447e8f6799d/src/game/host.cpp#L154)).
-The check passes only when the session reads offline and anti-cheat, the target process and the official network all
-read Clear ([`host.cpp` lines 46 to 52](https://github.com/scuba-sc/sco-core/blob/844e136ccb280ad8cb43f73bc43c9447e8f6799d/src/game/host.cpp#L46-L52));
-otherwise the host refuses ([line 121](https://github.com/scuba-sc/sco-core/blob/844e136ccb280ad8cb43f73bc43c9447e8f6799d/src/game/host.cpp#L121))
-and the shell skips its offline start-up
-([`dllmain.cpp` line 273](https://github.com/scuba-sc/sc-offline/blob/96686b95adc2e07e4cf3d0db15c4ec3a79cb1a8e/src/dllmain.cpp#L273)).
-sc-offline's own status notes record `officialNetwork=Clear` in two runs of v0.7.8.1
-([`docs/status.md` lines 13 to 15](https://github.com/scuba-sc/sc-offline/blob/96686b95adc2e07e4cf3d0db15c4ec3a79cb1a8e/docs/status.md#L13-L15)) and say
-the shell has reported network evidence from live firewall and connection reads since then
-([line 40](https://github.com/scuba-sc/sc-offline/blob/96686b95adc2e07e4cf3d0db15c4ec3a79cb1a8e/docs/status.md#L40)).
-So an earlier version of this README, which said G13 always refuses in that shell, no longer matches the source.
-What a given PC's reads find is not known from here.
-
-One setting makes the official network read Unknown by construction. It reads Clear only when the firewall's blocked set
-covers every IPv4 address except 10/8, 127/8, 169.254/16, 172.16/12 and 192.168/16
-([`src/admission_evidence.h` lines 329 to 334](https://github.com/scuba-sc/sc-offline/blob/96686b95adc2e07e4cf3d0db15c4ec3a79cb1a8e/src/admission_evidence.h#L329-L334)
-and [414 to 416](https://github.com/scuba-sc/sc-offline/blob/96686b95adc2e07e4cf3d0db15c4ec3a79cb1a8e/src/admission_evidence.h#L414-L416)),
-and the launcher leaves the `multiplayer_allow` ranges open in the `StarCitizen.exe` block rule
-([`launcher/launcher.cpp` lines 2017 to 2030](https://github.com/scuba-sc/sc-offline/blob/96686b95adc2e07e4cf3d0db15c4ec3a79cb1a8e/launcher/launcher.cpp#L2017-L2030)).
-A range outside those five that is allowed there, such as a VPN's `100.64.0.0/10`, is not covered, so the check reads
-Unknown at start-up. The host then refuses (`host.cpp` line 121, which leaves it idle), the shell tries three times and
-gives up
-([`dllmain.cpp` lines 436 to 450](https://github.com/scuba-sc/sc-offline/blob/96686b95adc2e07e4cf3d0db15c4ec3a79cb1a8e/src/dllmain.cpp#L436-L450)),
-and it returns from its offline start-up before applying any patch (line 273 above). The host kit is started only from
-the prepared state
-([`dllmain.cpp` lines 534 to 535](https://github.com/scuba-sc/sc-offline/blob/96686b95adc2e07e4cf3d0db15c4ec3a79cb1a8e/src/dllmain.cpp#L534-L535)),
-and that start is what hands G13 its admission check (`host.cpp` line 154 above), so as far as this reading shows no
-Host or Join is offered at all in that case. No bypass or invented evidence was added to this plugin.
+**Admission and activation status** (source reading only; not run in game). The older discussion in this section referred
+to sc-offline `96686b9` and sco-core `844e136`; its `100.64.0.0/10` example does not describe current source behavior.
+At sc-offline `e0ed7dba102b3463b04e02af1ff49a2addabe7ea`, the launcher accepts configured `multiplayer_allow` entries
+only when they are private IPv4 ranges, and the admission check uses that configured set when checking firewall
+coverage. See [`launcher.cpp`](https://github.com/scuba-sc/sc-offline/blob/e0ed7dba102b3463b04e02af1ff49a2addabe7ea/launcher/launcher.cpp#L198-L235)
+and [`admission_evidence.h`](https://github.com/scuba-sc/sc-offline/blob/e0ed7dba102b3463b04e02af1ff49a2addabe7ea/src/admission_evidence.h#L494-L515).
+This is admission evidence, not proof that multiplayer can start: the same source hard-codes
+[`NativeActivationAvailable()` to `false`](https://github.com/scuba-sc/sc-offline/blob/e0ed7dba102b3463b04e02af1ff49a2addabe7ea/src/native_activation_policy.h#L1-L8),
+and [`docs/status.md`](https://github.com/scuba-sc/sc-offline/blob/e0ed7dba102b3463b04e02af1ff49a2addabe7ea/docs/status.md#L57-L68)
+states that native startup remains refused and no session has been run for this candidate. The plugin's explicit LAN
+policy above does not activate a host, and neither these source readings nor this PR's synthetic tests establish
+game-host readiness.
 
 ## Co-presence, not shared simulation
 

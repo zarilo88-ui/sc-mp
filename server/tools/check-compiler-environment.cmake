@@ -182,14 +182,17 @@ if(DEFINED CMAKE_CXX_COMPILER_ID)
   endif()
 
   if(_sco_relay_library_dirs)
-    # The selected toolset root includes the standard C++ and optional ATL/MFC library directories. The NETFX SDK
-    # is installed beside the versioned Windows Kits SDK and is also part of a normal VS developer environment.
+    # The selected toolset root includes the standard C++ and optional ATL/MFC library directories. Visual Studio
+    # also adds its auxiliary and unit-test libraries; keep those exact subtrees rooted in the selected install.
+    # The NETFX SDK is installed beside the versioned Windows Kits SDK and is part of a normal VS environment.
     set(_sco_relay_trusted_library_roots "${_sco_relay_msvc_root}")
     get_filename_component(_sco_relay_msvc_version_parent "${_sco_relay_msvc_root}" DIRECTORY)
     get_filename_component(_sco_relay_vc_tools_dir "${_sco_relay_msvc_version_parent}" DIRECTORY)
     get_filename_component(_sco_relay_vc_dir "${_sco_relay_vc_tools_dir}" DIRECTORY)
     get_filename_component(_sco_relay_vs_root "${_sco_relay_vc_dir}" DIRECTORY)
-    list(APPEND _sco_relay_trusted_library_roots "${_sco_relay_vs_root}/VC/Auxiliary/VS/lib")
+    list(APPEND _sco_relay_trusted_library_roots
+      "${_sco_relay_vs_root}/VC/Auxiliary/VS/lib"
+      "${_sco_relay_vs_root}/VC/Auxiliary/VS/UnitTest/lib")
     if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
       list(APPEND _sco_relay_trusted_library_roots
         "C:/Program Files (x86)/Windows Kits/10/Lib/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
@@ -236,7 +239,9 @@ if(DEFINED CMAKE_CXX_COMPILER_ID)
     get_filename_component(_sco_relay_vc_tools_dir "${_sco_relay_msvc_version_parent}" DIRECTORY)
     get_filename_component(_sco_relay_vc_dir "${_sco_relay_vc_tools_dir}" DIRECTORY)
     get_filename_component(_sco_relay_vs_root "${_sco_relay_vc_dir}" DIRECTORY)
-    list(APPEND _sco_relay_trusted_library_roots "${_sco_relay_vs_root}/VC/Auxiliary/VS/lib")
+    list(APPEND _sco_relay_trusted_library_roots
+      "${_sco_relay_vs_root}/VC/Auxiliary/VS/lib"
+      "${_sco_relay_vs_root}/VC/Auxiliary/VS/UnitTest/lib")
     if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
       list(APPEND _sco_relay_trusted_library_roots
         "C:/Program Files (x86)/Windows Kits/10/Lib/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")

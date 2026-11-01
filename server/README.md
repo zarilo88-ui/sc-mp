@@ -190,7 +190,8 @@ keep stable. So the server touches the library in one place only.
   ([include-search documentation](https://learn.microsoft.com/en-us/cpp/preprocessor/hash-include-directive-c-cpp?view=msvc-170)). LINK searches its working directory before `LIB`. A configure-time MSVC probe checks that plain and empty-component `LIB` forms preserve default-library resolution from that already-searched directory. The safety rule for dropping empty components relies on the documented search order rather than claiming the probe distinguishes a repeated working-directory lookup. The build-time gate discards empty `LIB`
   components only for the probed Visual Studio generator and checks every remaining path against the exact versioned
   compiler and SDK roots selected at configuration, together with the selected Visual Studio installation's
-  `VC/Auxiliary/VS/lib` subtree, even when configure did not export `LIB`; an empty list reduces search paths. Other
+  `VC/Auxiliary/VS/lib` and `VC/Auxiliary/VS/UnitTest/lib` subtrees, even when configure did not export `LIB`; an
+  empty list reduces search paths. Other
   generators must keep the environment unchanged through the build. The Windows configure step removes inherited
   `LIB` only during CMake's compiler-identification probes, then restores and validates it before generating product
   targets. LINK's search order is documented [here](https://learn.microsoft.com/en-us/cpp/build/reference/dot-lib-files-as-linker-input?view=msvc-170). On Linux, compile input is checked from CMake's generated `compile_commands.json`,

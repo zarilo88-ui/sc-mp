@@ -10,6 +10,7 @@ set(_bad_include "${SCO_RELAY_TEST_BINARY_DIR}/external/include")
 set(_good_library "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/lib/x64")
 set(_good_library_alt "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/lib/x86")
 set(_good_auxiliary_library "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Auxiliary/VS/lib/x64")
+set(_good_unittest_library "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Auxiliary/VS/UnitTest/lib/x64")
 set(_bad_library "${SCO_RELAY_TEST_BINARY_DIR}/external/lib")
 set(_compiler "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe")
 set(_spoof_program_files "${SCO_RELAY_TEST_BINARY_DIR}/spoofed-program-files")
@@ -67,7 +68,7 @@ string(CONCAT _msvc_config_cache_text
   "CMAKE_STATIC_LINKER_FLAGS_DEBUG:STRING=\nCMAKE_STATIC_LINKER_FLAGS_MINSIZEREL:STRING=\n"
   "CMAKE_STATIC_LINKER_FLAGS_RELEASE:STRING=\nCMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO:STRING=\n")
 file(MAKE_DIRECTORY "${_good_include}" "${_bad_include}" "${_good_library}" "${_good_library_alt}"
-  "${_good_auxiliary_library}" "${_bad_library}" "${_spoof_sdk_include}"
+  "${_good_auxiliary_library}" "${_good_unittest_library}" "${_bad_library}" "${_spoof_sdk_include}"
   "${SCO_RELAY_TEST_BINARY_DIR}/MSVC/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64")
 file(WRITE "${_cache}"
   "CMAKE_C_FLAGS:STRING=\nCMAKE_CXX_FLAGS:STRING=\nCMAKE_EXE_LINKER_FLAGS:STRING=\n"
@@ -290,6 +291,23 @@ execute_process(
   ERROR_VARIABLE _msbuild_auxiliary_library_stderr)
 if(NOT _msbuild_auxiliary_library_result EQUAL 0)
   message(FATAL_ERROR "the selected Visual Studio auxiliary library directory should pass the recorded-root guard: ${_msbuild_auxiliary_library_stderr}${_msbuild_auxiliary_library_stdout}")
+endif()
+
+execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=;" "LIB=${_good_unittest_library}"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_snapshot}"
+    "-DSCO_RELAY_CMAKE_CACHE=${_cache}"
+    -DSCO_RELAY_COMPILER_ID=MSVC
+    "-DSCO_RELAY_CMAKE_GENERATOR=Visual Studio 17 2022"
+    -DSCO_RELAY_MSVC_IDE_BUILD=ON
+    -DSCO_RELAY_MSVC_EMPTY_LIB_PROBE=ON
+    -P "${_script}"
+  RESULT_VARIABLE _msbuild_unittest_library_result
+  OUTPUT_VARIABLE _msbuild_unittest_library_stdout
+  ERROR_VARIABLE _msbuild_unittest_library_stderr)
+if(NOT _msbuild_unittest_library_result EQUAL 0)
+  message(FATAL_ERROR "the selected Visual Studio unit-test library directory should pass the recorded-root guard: ${_msbuild_unittest_library_stderr}${_msbuild_unittest_library_stdout}")
 endif()
 
 foreach(_empty_lib_case IN ITEMS leading interior trailing)

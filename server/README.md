@@ -145,7 +145,7 @@ The relay tests are registered with CTest alongside the rest of sc-mp:
 | `relay_no_game_code_checks` | that the source gate permits the guarded Windows SDK headers only at their use sites and rejects other Windows headers or parent paths |
 | `relay_no_implicit_link_directives` | that only `#pragma once` is allowed in production sources; direct and macro-expanded `#pragma`, `%:pragma`, `__pragma`, `_Pragma` and token-pasted pragma inputs are rejected on Windows and Linux |
 | `relay_compiler_environment_checks` | that implicit compiler paths/options and changed CMake compiler/linker flags are rejected while standard MSVC `INCLUDE` and `LIB` paths stay within the selected compiler, Windows SDK, Visual Studio auxiliary and unit-test library, and installed .NET Framework SDK roots |
-| `relay_msvc_pragma_link` | on MSVC, that `_Pragma("comment(lib, ...)")` and a macro-expanded `#pragma` name create linker library search records |
+| `relay_msvc_pragma_link` | on MSVC, that `_Pragma("comment(lib, ...)")` creates a library search record, and what the compiler reports for a macro-expanded `#pragma` name |
 | `relay_install_guard_checks` | mocked account-identity and config-path guard cases using temporary files; the installer is not executed and system accounts are not changed |
 
 `test_server` and `relay_no_implicit_link_directives` run on Windows and Linux. The process and binary/link-boundary

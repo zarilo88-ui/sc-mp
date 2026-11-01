@@ -109,9 +109,9 @@ every datagram from any other address. That has a plain consequence for a rented
   `10.x.x.x`), and have the players join the server's VPN address.
 - If your VPN uses other addresses, name them in `allowed_addresses` in the config (each range `/8` or narrower), then restart
   the relay. The relay then accepts them; what the players' game does with them is the next point.
-- Players' sc-offline currently blocks CGNAT ranges such as `100.64.0.0/10`, the range Tailscale uses (found by reading
-  its source, not run in game). Until that changes, a VPN that hands out those addresses may not work for them even when the
-  relay allows the range. This is about the players' side; the relay's `allowed_addresses` cannot fix it.
+- The relay's `allowed_addresses` setting does not set the players' game policy. Current sc-offline source includes
+  shared `100.64.0.0/10` in its network ranges, but its product still refuses native startup. The relay's filter and
+  synthetic tests therefore do not establish that a game client can host or join through this range.
 
 Traffic is signed with the passphrase but **not encrypted**. Players who need privacy use a VPN, as for the rest of the traffic.
 

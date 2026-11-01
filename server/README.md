@@ -122,8 +122,10 @@ foreground as the relay (Ctrl+C or SIGTERM stops it, exit 0), after printing the
   changes no firewall.
 - **Who can join.** The LAN rule (guardrail 2) applies: the relay drops every address except loopback and the private
   ranges. A rented server reached over public addresses therefore needs a VPN whose addresses are private, or
-  `allowed_addresses` naming the ranges the players come from. Players' sc-offline currently blocks CGNAT ranges such as
-  `100.64.0.0/10` (found by reading its source, not run in game), so a VPN in that range may not work for them yet.
+  `allowed_addresses` naming the ranges the players come from. The relay's allow list is separate from sc-offline's
+  plugin and admission policy. Current sc-offline source includes shared `100.64.0.0/10` in its network ranges, but its
+  product still refuses native startup; neither that source policy nor relay tests establish that players can host or
+  join in game. See the admission and activation status in the multiplayer README.
 
 No container image is shipped. **Not run on a real VM. Not run in game.** The kit was run from a committed copy in fresh
 `ubuntu:24.04` and `debian:12` containers and in an `ubuntu:24.04` container running systemd: install, start, a join with

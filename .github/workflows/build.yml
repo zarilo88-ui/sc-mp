@@ -40,7 +40,7 @@ jobs:
       # Probe the MSVC source/linker behavior before the relay build gate can reject a changed MSBuild environment.
       - name: Check MSVC linker directives and empty LIB path behavior
         if: runner.os == 'Windows'
-        run: ctest --test-dir build -C ${{ matrix.config }} -R '^relay_msvc_pragma_link$' --output-on-failure
+        run: ctest --test-dir build -C ${{ matrix.config }} -R '^relay_msvc_pragma_link$' --output-on-failure --verbose
 
       - name: Build
         run: cmake --build build --config ${{ matrix.config }}

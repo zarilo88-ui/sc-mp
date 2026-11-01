@@ -17,13 +17,34 @@ foreach(_sco_relay_source IN LISTS _sco_relay_source_files)
   string(TOLOWER "${_sco_relay_source_text}" _sco_relay_source_lower)
   string(REPLACE "\\\r\n" "" _sco_relay_source_spliced "${_sco_relay_source_lower}")
   string(REPLACE "\\\n" "" _sco_relay_source_spliced "${_sco_relay_source_spliced}")
-  string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" " " _sco_relay_source_checked
+  # Remove ordinary string/character literals before comments so literal text cannot masquerade as a directive.
+  string(REGEX REPLACE "\"([^\"\\\\]|\\\\.)*\"" "\"\"" _sco_relay_source_checked
     "${_sco_relay_source_spliced}")
-  if(_sco_relay_source_checked MATCHES "(#|%:)[ \t]*pragma[ \t]+comment" OR
-     _sco_relay_source_checked MATCHES "__pragma[ \t]*\\([ \t]*comment")
+  string(REGEX REPLACE "'([^'\\\\]|\\\\.)*'" "''" _sco_relay_source_checked
+    "${_sco_relay_source_checked}")
+  string(REGEX REPLACE "/\\*([^*]|\\*+[^*/])*\\*+/" " " _sco_relay_source_checked
+    "${_sco_relay_source_checked}")
+  string(REGEX REPLACE "//[^\n]*" " " _sco_relay_source_checked "${_sco_relay_source_checked}")
+  string(ASCII 9 _sco_relay_tab)
+  string(ASCII 11 _sco_relay_vertical_tab)
+  string(ASCII 12 _sco_relay_form_feed)
+  string(ASCII 13 _sco_relay_carriage_return)
+  foreach(_sco_relay_horizontal_space IN ITEMS
+      "${_sco_relay_tab}" "${_sco_relay_vertical_tab}" "${_sco_relay_form_feed}" "${_sco_relay_carriage_return}")
+    string(REPLACE "${_sco_relay_horizontal_space}" " " _sco_relay_source_checked
+      "${_sco_relay_source_checked}")
+  endforeach()
+  # _Pragma is an operator in C99/C++11 that can create the same pragma records. Newlines are whitespace in an
+  # operator invocation, so scan a newline-normalized copy too. Token pasting can synthesize hidden directive tokens;
+  # production source has no need for it, so fail closed when it appears.
+  string(REPLACE "\n" " " _sco_relay_source_pragma_scan "${_sco_relay_source_checked}")
+  if(_sco_relay_source_checked MATCHES "(^|\n)[ ]*(#|%:) *define[^\n]*(##|%:%:)" OR
+     _sco_relay_source_checked MATCHES "(#|%:) *pragma *comment" OR
+     _sco_relay_source_pragma_scan MATCHES "(^|[^a-z0-9_])__pragma([^a-z0-9_]|$)" OR
+     _sco_relay_source_pragma_scan MATCHES "(^|[^a-z0-9_])_pragma([^a-z0-9_]|$)")
     message(FATAL_ERROR
-      "sc-mp relay: source-level comment pragma can inject linker inputs: ${_sco_relay_source}")
+      "sc-mp relay: source-level pragma or token-paste can inject linker inputs: ${_sco_relay_source}")
   endif()
 endforeach()
 
-message(STATUS "sc-mp relay: no source-level MSVC linker comment pragmas")
+message(STATUS "sc-mp relay: no source-level MSVC link directives or token-pasted pragma operators")

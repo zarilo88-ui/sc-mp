@@ -143,7 +143,9 @@ The relay tests are registered with CTest alongside the rest of sc-mp:
 | `net_boundary_checks` | that the checks below fire when they should, on altered copies of the kit's files |
 | `relay_no_game_code` | that the server and shared `plugins/multiplayer/relay_wire.h` hold no game code, and that the server touches the kit's network library in one file |
 | `relay_no_game_code_checks` | that the source gate permits the guarded Windows SDK headers only at their use sites and rejects other Windows headers or parent paths |
-| `relay_no_implicit_link_directives` | that MSVC `#pragma comment` and `__pragma(comment)` link inputs are rejected in production sources, on both Windows and Linux |
+| `relay_no_implicit_link_directives` | that MSVC `#pragma comment`, `__pragma`, `_Pragma` and token-pasted pragma inputs are rejected in production sources, on both Windows and Linux |
+| `relay_compiler_environment_checks` | that implicit compiler paths/options and changed CMake compiler/linker flags are rejected while the standard MSVC `INCLUDE` paths stay within the selected compiler and SDK roots |
+| `relay_msvc_pragma_link` | on MSVC, that `_Pragma("comment(lib, ...)")` really creates a linker library search record |
 | `relay_install_guard_checks` | mocked account-identity and config-path guard cases using temporary files; the installer is not executed and system accounts are not changed |
 
 `test_server` and `relay_no_implicit_link_directives` run on Windows and Linux. The process and binary/link-boundary
@@ -169,16 +171,23 @@ keep stable. So the server touches the library in one place only.
   shadowed before the pinned kit path; any explicit product include path other than the kit's exact `include/` folder;
   or an actual compile command that adds another include path, a forced include, a PCH, a compiler plugin or a response
   file. A repository-root include directory is absent from the product targets, so nested files such as
-  `bits/stl_vector.h` cannot shadow transitive system headers. Compiler or linker environment overrides such as
-  `CPATH` and `LIBRARY_PATH` are refused at configure, build and test time. A name with `..` is refused except the
-  shared wire header's one fixed relative include. The server's compiled source list must match the reviewed
+  `bits/stl_vector.h` cannot shadow transitive system headers. A name with `..` is refused except the shared wire
+  header's one fixed relative include.
+  The server's compiled source list must match the reviewed
   `server/*.cpp` set, not just archive member names. The gate also checks that the kit was configured with
   `SCO_GAME_SC=OFF`, the program links only the server library, the kit's network library and the two socket files,
   and the network archives contain only their expected objects. It finds an `#include` wherever it hides: behind a
   comment between the `#` and `include`, after a
-  backslash-newline splice, or spelt with the `%:` digraph.
-  The compile input is checked from CMake's generated `compile_commands.json`, which includes the global, target and
-  source-specific compiler options used for the relay and its two kit libraries. The link is read twice: from what
+  backslash-newline splice, or spelt with the `%:` digraph. The adjacent source check also refuses direct `#pragma`
+  and `%:pragma` linker comments, `__pragma`, `_Pragma`, and macro token pasting that could synthesize one.
+  Environment overrides such as `CPATH`, `CFLAGS`, `CXXFLAGS`, `LDFLAGS` and `LIBRARY_PATH`, custom CMake toolchain or
+  rules hooks, and compiler launchers are refused. Generic and per-configuration CMake compiler/linker flags must
+  match the selected CMake platform defaults at configure time and stay unchanged through the build. The standard
+  MSVC `INCLUDE` list is allowed only within the selected compiler and Windows SDK version directories and must stay
+  unchanged through the build. On Linux, compile input is checked from CMake's generated `compile_commands.json`,
+  which includes the global, target and source-specific compiler options used for the relay and its two kit libraries.
+  The Windows Visual Studio generator does not produce that database in this workflow; Windows instead runs the
+  environment/default-flag guards, source-level pragma scanner, and the MSVC `_Pragma` linker-record probe. The link is read twice: from what
   CMake declares for each target, including the libraries a target passes on to whatever links it
   (`INTERFACE_LINK_LIBRARIES`), and from the program's real link line, the `link.txt` that Makefile generators write.
   The check fails when either generated file is missing: Ninja writes no `link.txt`, so the relay is checked with a

@@ -54,6 +54,13 @@ add_test(NAME relay_no_implicit_link_directives
           "-DSCO_RELAY_ROOT=${SCO_RELAY_ROOT}"
           -P "${CMAKE_CURRENT_SOURCE_DIR}/test_no_implicit_link_directives.cmake")
 set_tests_properties(relay_no_implicit_link_directives PROPERTIES TIMEOUT 30)
+add_test(NAME relay_compiler_environment_checks
+  COMMAND "${CMAKE_COMMAND}"
+          "-DSCO_RELAY_CMAKE_COMMAND=${CMAKE_COMMAND}"
+          "-DSCO_RELAY_SOURCE_ROOT=${SCO_RELAY_ROOT}"
+          "-DSCO_RELAY_TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/compiler-environment-test"
+          -P "${CMAKE_CURRENT_SOURCE_DIR}/test_compiler_environment.cmake")
+set_tests_properties(relay_compiler_environment_checks PROPERTIES TIMEOUT 30)
 
 if(WIN32)
   add_executable(test_windows_process test_windows_process.cpp)
@@ -62,6 +69,13 @@ if(WIN32)
   sco_relay_target_setup(test_windows_process)
   add_test(NAME sco_relay_windows_process COMMAND test_windows_process $<TARGET_FILE:sco-relay>)
   set_tests_properties(sco_relay_windows_process PROPERTIES TIMEOUT 60)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    add_test(NAME relay_msvc_pragma_link COMMAND "${CMAKE_COMMAND}"
+      "-DSCO_RELAY_COMPILER=${CMAKE_CXX_COMPILER}"
+      "-DSCO_RELAY_TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/msvc-pragma-test"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/test_msvc_pragma_link.cmake")
+    set_tests_properties(relay_msvc_pragma_link PROPERTIES TIMEOUT 30)
+  endif()
 endif()
 if(NOT WIN32)
 add_test(NAME sco_relay_program

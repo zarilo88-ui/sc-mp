@@ -274,7 +274,7 @@ say "  passphrase:  the 'passphrase =' line of $config. Only root and the $accou
 say "  port:        UDP $port. Open it in your firewall for your LAN or VPN network only, never to the whole internet. This installer changes no firewall."
 say "  who may join: the relay drops every address except loopback and the private ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16)."
 say "    Public addresses (a rented server, players at home) need a VPN whose addresses are private, or 'allowed_addresses' in the config naming the ranges players come from."
-say "    Players' sc-offline currently blocks CGNAT ranges such as 100.64.0.0/10 (found by reading its source, not run in game), so a VPN that hands out those addresses may not work for them yet."
+say "    Current sc-offline source accepts 100.64.0.0/10 as a private-range admission input, but native multiplayer startup remains refused; this relay setting does not establish that clients can join in game."
 say "  more:        server/deploy/README.md"
 
 if [ -z "$systemd_runs" ]; then

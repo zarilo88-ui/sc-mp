@@ -1,5 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-only
 cmake_minimum_required(VERSION 3.20)
+
+# Reject compiler-option injection before project() runs its compiler identification probes. The relay defaults on
+# for Windows/Linux builds using the published kit; explicit plugin-only builds keep their normal toolchain options.
+if(DEFINED SC_MP_BUILD_RELAY)
+  if(SC_MP_BUILD_RELAY)
+    include("${CMAKE_CURRENT_LIST_DIR}/server/tools/check-compiler-bootstrap.cmake")
+  endif()
+elseif((NOT DEFINED SC_MP_FETCH_SDK OR SC_MP_FETCH_SDK) AND
+       (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" OR
+        CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+  include("${CMAKE_CURRENT_LIST_DIR}/server/tools/check-compiler-bootstrap.cmake")
+endif()
+
 project(sc-mp LANGUAGES C CXX)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
@@ -29,6 +42,7 @@ else()
 endif()
 option(SC_MP_BUILD_RELAY "Build the relay server from the published core-source kit" ${_sc_mp_relay_default})
 if(SC_MP_BUILD_RELAY)
+  set(SCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT "${CMAKE_BINARY_DIR}/sco-relay-compiler-environment.txt")
   include("${CMAKE_CURRENT_LIST_DIR}/server/tools/check-compiler-environment.cmake")
 endif()
 if(SC_MP_BUILD_RELAY AND SC_MP_BUILD_TESTS AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -69,7 +83,11 @@ if(SC_MP_BUILD_RELAY)
   add_dependencies(sco_relay_server sco_relay_link_directive_check)
   add_dependencies(sco-relay sco_relay_link_directive_check)
   add_custom_target(sco_relay_compiler_environment_check
-    COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_LIST_DIR}/server/tools/check-compiler-environment.cmake"
+    COMMAND "${CMAKE_COMMAND}"
+            "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${SCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT}"
+            "-DSCO_RELAY_COMPILER_ID=${CMAKE_CXX_COMPILER_ID}"
+            "-DSCO_RELAY_CMAKE_CACHE=${CMAKE_BINARY_DIR}/CMakeCache.txt"
+            -P "${CMAKE_CURRENT_LIST_DIR}/server/tools/check-compiler-environment.cmake"
     VERBATIM)
   add_dependencies(sco_net sco_relay_compiler_environment_check)
   add_dependencies(sco_relay_sockets sco_relay_compiler_environment_check)

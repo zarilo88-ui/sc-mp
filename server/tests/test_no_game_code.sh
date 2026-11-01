@@ -827,6 +827,10 @@ variant_refused "Clang's opaque preprocessor argument forwarding" \
 variant_env_refused "an implicit CPATH entry" "compiler environment overrides include, linker or toolchain search: CPATH" CPATH "$copy_root"
 variant_env_refused "Clang's compiler argument override environment" \
     "compiler environment overrides include, linker or toolchain search: CCC_OVERRIDE_OPTIONS" CCC_OVERRIDE_OPTIONS "-include"
+variant_env_refused "CMake's implicit compiler flag initialization" \
+    "compiler environment overrides include, linker or toolchain search: CXXFLAGS" CXXFLAGS "-include $work/injected.h"
+variant_env_refused "CMake's implicit linker flag initialization" \
+    "compiler environment overrides include, linker or toolchain search: LDFLAGS" LDFLAGS "-Wl,-T,$work/injected.ld"
 variant_env_refused "GCC's implicit linker search path" \
     "compiler environment overrides include, linker or toolchain search: LIBRARY_PATH" LIBRARY_PATH "$work/untrusted-libraries"
 variant_env_refused "MSVC's implicit linker search path" \

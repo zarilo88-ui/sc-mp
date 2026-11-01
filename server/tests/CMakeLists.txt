@@ -19,6 +19,8 @@
 #                           hidden in a -Wl, list or an @response file, and a missing link.txt; an include inside a
 #                           comment and ordinary GCC/Clang link options are also checked as positive controls
 #   relay_no_implicit_link_directives rejects MSVC source-level linker pragmas on all platforms, including Windows
+#   relay_install_guard_checks exercises installer identity and config-path guards using mocked account commands
+#                                 and temporary files; it never executes the installer or changes system accounts
 # The full binary/link-boundary checks are Linux-only; test_server and the source-level directive check run on both.
 
 add_executable(test_server
@@ -112,4 +114,10 @@ add_test(NAME relay_no_game_code_checks
   COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/test_no_game_code.sh"
           "${SCO_RELAY_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/relay-build-facts.txt")
 set_tests_properties(relay_no_game_code_checks PROPERTIES TIMEOUT 240)
+# This is a hermetic shell test: account commands are mocked and files live under a temporary directory.
+add_test(NAME relay_install_guard_checks
+  COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/test_install_guard.sh"
+          "${SCO_RELAY_ROOT}/server/deploy/install_guard.sh"
+          "${SCO_RELAY_ROOT}/server/deploy/install.sh")
+set_tests_properties(relay_install_guard_checks PROPERTIES TIMEOUT 30)
 endif()

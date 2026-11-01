@@ -142,6 +142,7 @@ The relay tests are registered with CTest alongside the rest of sc-mp:
 | `relay_no_game_code` | that the server and shared `plugins/multiplayer/relay_wire.h` hold no game code, and that the server touches the kit's network library in one file |
 | `relay_no_game_code_checks` | that the source gate permits the guarded Windows SDK headers only at their use sites and rejects other Windows headers or parent paths |
 | `relay_no_implicit_link_directives` | that MSVC `#pragma comment` and `__pragma(comment)` link inputs are rejected in production sources, on both Windows and Linux |
+| `relay_install_guard_checks` | mocked account-identity and config-path guard cases using temporary files; the installer is not executed and system accounts are not changed |
 
 `test_server` and `relay_no_implicit_link_directives` run on Windows and Linux. The process and binary/link-boundary
 tests run on Linux except for `sco_relay_windows_process`, which runs on Windows.

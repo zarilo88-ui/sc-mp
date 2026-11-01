@@ -238,6 +238,41 @@ if(NOT _msbuild_empty_library_result EQUAL 0)
   message(FATAL_ERROR "a probed Visual Studio build with no usable LIB directories should not add search paths: ${_msbuild_empty_library_stderr}${_msbuild_empty_library_stdout}")
 endif()
 
+set(_empty_config_snapshot "${SCO_RELAY_TEST_BINARY_DIR}/empty-config-libraries.txt")
+execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=" "LIB="
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DCMAKE_CXX_COMPILER_ID=MSVC"
+    "-DCMAKE_CXX_COMPILER=${_compiler}"
+    "-DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION=10.0.26100.0"
+    ${_cmake_flag_cli_args}
+    "-DCMAKE_BINARY_DIR=${SCO_RELAY_TEST_BINARY_DIR}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_empty_config_snapshot}"
+    -P "${_script}"
+  RESULT_VARIABLE _empty_config_libraries_result
+  OUTPUT_VARIABLE _empty_config_libraries_stdout
+  ERROR_VARIABLE _empty_config_libraries_stderr)
+if(NOT _empty_config_libraries_result EQUAL 0)
+  message(FATAL_ERROR "an MSVC configure with no exported INCLUDE or LIB should still record selected roots: ${_empty_config_libraries_stderr}${_empty_config_libraries_stdout}")
+endif()
+file(APPEND "${_empty_config_snapshot}" "msvc_empty_lib_probe=passed\n")
+execute_process(
+  COMMAND "${SCO_RELAY_CMAKE_COMMAND}" -E env "INCLUDE=;" "LIB=${_good_library}"
+    "${SCO_RELAY_CMAKE_COMMAND}"
+    "-DSCO_RELAY_COMPILER_ENVIRONMENT_SNAPSHOT=${_empty_config_snapshot}"
+    "-DSCO_RELAY_CMAKE_CACHE=${_cache}"
+    -DSCO_RELAY_COMPILER_ID=MSVC
+    "-DSCO_RELAY_CMAKE_GENERATOR=Visual Studio 17 2022"
+    -DSCO_RELAY_MSVC_IDE_BUILD=ON
+    -DSCO_RELAY_MSVC_EMPTY_LIB_PROBE=ON
+    -P "${_script}"
+  RESULT_VARIABLE _msbuild_selected_root_library_result
+  OUTPUT_VARIABLE _msbuild_selected_root_library_stdout
+  ERROR_VARIABLE _msbuild_selected_root_library_stderr)
+if(NOT _msbuild_selected_root_library_result EQUAL 0)
+  message(FATAL_ERROR "a Visual Studio build may populate LIB from the configure-selected roots: ${_msbuild_selected_root_library_stderr}${_msbuild_selected_root_library_stdout}")
+endif()
+
 foreach(_empty_lib_case IN ITEMS leading interior trailing)
   if(_empty_lib_case STREQUAL "interior")
     set(_case_snapshot "${SCO_RELAY_TEST_BINARY_DIR}/multiple-libraries.txt")

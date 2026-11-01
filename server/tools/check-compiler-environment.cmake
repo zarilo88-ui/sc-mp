@@ -218,6 +218,33 @@ if(DEFINED CMAKE_CXX_COMPILER_ID)
     endforeach()
   endif()
 
+  # Visual Studio may not export LIB during CMake configuration; MSBuild can populate it later from the selected
+  # compiler and target SDK. Record those roots even when there were no configure-time LIB entries to validate.
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND NOT _sco_relay_trusted_library_roots_normalized)
+    get_filename_component(_sco_relay_compiler "${CMAKE_CXX_COMPILER}" REALPATH)
+    get_filename_component(_sco_relay_msvc_x64_dir "${_sco_relay_compiler}" DIRECTORY)
+    get_filename_component(_sco_relay_msvc_host_dir "${_sco_relay_msvc_x64_dir}" DIRECTORY)
+    get_filename_component(_sco_relay_msvc_bin_dir "${_sco_relay_msvc_host_dir}" DIRECTORY)
+    get_filename_component(_sco_relay_msvc_root "${_sco_relay_msvc_bin_dir}" DIRECTORY)
+    set(_sco_relay_trusted_library_roots "${_sco_relay_msvc_root}")
+    if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+      list(APPEND _sco_relay_trusted_library_roots
+        "C:/Program Files (x86)/Windows Kits/10/Lib/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
+    endif()
+    list(APPEND _sco_relay_trusted_library_roots
+      "C:/Program Files (x86)/Windows Kits/NETFXSDK")
+    foreach(_sco_relay_root IN LISTS _sco_relay_trusted_library_roots)
+      if(IS_DIRECTORY "${_sco_relay_root}")
+        file(REAL_PATH "${_sco_relay_root}" _sco_relay_root_real)
+        string(TOLOWER "${_sco_relay_root_real}" _sco_relay_root_key)
+        list(APPEND _sco_relay_trusted_library_roots_normalized "${_sco_relay_root_key}")
+      endif()
+    endforeach()
+    if(NOT _sco_relay_trusted_library_roots_normalized)
+      message(FATAL_ERROR "sc-mp relay: could not identify the selected MSVC and Windows SDK library roots")
+    endif()
+  endif()
+
   if(SCO_RELAY_MSVC_IDE_BUILD)
     execute_process(
       COMMAND "${CMAKE_COMMAND}"

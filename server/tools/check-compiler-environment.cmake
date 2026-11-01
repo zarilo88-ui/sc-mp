@@ -185,6 +185,11 @@ if(DEFINED CMAKE_CXX_COMPILER_ID)
     # The selected toolset root includes the standard C++ and optional ATL/MFC library directories. The NETFX SDK
     # is installed beside the versioned Windows Kits SDK and is also part of a normal VS developer environment.
     set(_sco_relay_trusted_library_roots "${_sco_relay_msvc_root}")
+    get_filename_component(_sco_relay_msvc_version_parent "${_sco_relay_msvc_root}" DIRECTORY)
+    get_filename_component(_sco_relay_vc_tools_dir "${_sco_relay_msvc_version_parent}" DIRECTORY)
+    get_filename_component(_sco_relay_vc_dir "${_sco_relay_vc_tools_dir}" DIRECTORY)
+    get_filename_component(_sco_relay_vs_root "${_sco_relay_vc_dir}" DIRECTORY)
+    list(APPEND _sco_relay_trusted_library_roots "${_sco_relay_vs_root}/VC/Auxiliary/VS/lib")
     if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
       list(APPEND _sco_relay_trusted_library_roots
         "C:/Program Files (x86)/Windows Kits/10/Lib/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
@@ -227,6 +232,11 @@ if(DEFINED CMAKE_CXX_COMPILER_ID)
     get_filename_component(_sco_relay_msvc_bin_dir "${_sco_relay_msvc_host_dir}" DIRECTORY)
     get_filename_component(_sco_relay_msvc_root "${_sco_relay_msvc_bin_dir}" DIRECTORY)
     set(_sco_relay_trusted_library_roots "${_sco_relay_msvc_root}")
+    get_filename_component(_sco_relay_msvc_version_parent "${_sco_relay_msvc_root}" DIRECTORY)
+    get_filename_component(_sco_relay_vc_tools_dir "${_sco_relay_msvc_version_parent}" DIRECTORY)
+    get_filename_component(_sco_relay_vc_dir "${_sco_relay_vc_tools_dir}" DIRECTORY)
+    get_filename_component(_sco_relay_vs_root "${_sco_relay_vc_dir}" DIRECTORY)
+    list(APPEND _sco_relay_trusted_library_roots "${_sco_relay_vs_root}/VC/Auxiliary/VS/lib")
     if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
       list(APPEND _sco_relay_trusted_library_roots
         "C:/Program Files (x86)/Windows Kits/10/Lib/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
